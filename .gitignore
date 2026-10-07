@@ -1,0 +1,8 @@
+# runtime data and secrets: never commit
+hub.db
+hub.db-*
+config.json
+config.json.tmp
+captures/
+__pycache__/
+*.pyc

@@ -1,0 +1,20 @@
+[Unit]
+Description=Home Hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=betzaleltusk
+WorkingDirectory=/home/betzaleltusk/homehub
+ExecStart=/usr/bin/python3 /home/betzaleltusk/homehub/hub.py
+Restart=always
+RestartSec=5
+# Network permissions for this service only (not root):
+#  NET_RAW          - nmap OS detection / raw ping
+#  NET_ADMIN        - nmap raw-socket scanning
+#  NET_BIND_SERVICE - listen (passively) on UDP 67 to overhear DHCP requests
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

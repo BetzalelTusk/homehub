@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Home Hub</title>
+<script>
+// Old browsers (e.g. an iPad 2 on iOS 9) can't run this dashboard; send them to the simplified wall display.
+if(!window.fetch||!window.CSS||!CSS.supports||!CSS.supports('display','grid')||!CSS.supports('--a','0')){location.replace('/display')}
+// light unless this browser picked dark; set before first paint so there's no flash
+try{document.documentElement.dataset.theme=localStorage.getItem('theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Styled after the Cloudflare dashboard: light canvas, white bordered cards, quiet sidebar, orange only for the main action, blue links and charts. */
+:root{
+  --canvas:#fbfbfb;--side:#fafafa;--surface:#fff;--tile:#f2f2f2;--tile-h:#ebebeb;--frame:#f5f5f5;
+  --border:#e5e5e5;--border-s:#ededed;--line:#d4d4d4;
+  --fg:#262626;--head:#0a0a0a;--mut:#737373;--sub:#a3a3a3;--icon:#525252;
+  --nav-on:#efefef;--hover:#f5f5f5;
+  --cf:#f6821f;--cf-d:#e5700e;--cf-l:rgba(246,130,31,.1);--cf-t:#c2570a;
+  --link:#0051c3;--chart:#3b82f6;--chart-f:rgba(59,130,246,.12);--bar:#2563eb;
+  --ok:#16a34a;--ok-t:#047857;--ok-l:#ecfdf5;--warn:#b45309;--warn-l:#fffbeb;--err:#dc2626;--err-t:#b91c1c;--err-l:#fef2f2;
+  --info:#1d4ed8;--info-l:#eff6ff;
+  --s1:#8b5cf6;--s2:#ec4899;--s3:#3b82f6;--s4:#2dd4bf;--s5:#f59e0b;
+  --home:#3b82f6;--leave:#f59e0b;
+  --sh-pop:0 10px 30px rgba(0,0,0,.08),0 2px 6px rgba(0,0,0,.04);--sh-dlg:0 24px 60px rgba(0,0,0,.18);
+  --r:8px;--card:rgba(255,255,255,.9);
+  color-scheme:light;
+}
+/* older names still used by inline styles in the page script */
+:root{--div:var(--border-s);--paper:var(--surface);--pri:var(--cf);--pri-l:var(--cf-l);--pri-t:var(--cf-t);--pri-2:var(--cf-t);--dis:var(--sub);--bg:var(--canvas);--field:var(--surface);--blue:var(--chart);--blue-d:var(--chart);--blue-l:var(--info-l);--amber:var(--warn);--amber-l:var(--warn-l)}
+:root[data-theme=dark]{
+  --canvas:#0a0a0a;--side:#0f0f0f;--surface:#141414;--tile:#1f1f1f;--tile-h:#262626;--frame:#101010;
+  --border:#262626;--border-s:#202020;--line:#3a3a3a;
+  --fg:#e5e5e5;--head:#fafafa;--mut:#a1a1a1;--sub:#737373;--icon:#a3a3a3;
+  --nav-on:#1f1f1f;--hover:#1a1a1a;
+  --cf:#f6821f;--cf-d:#ff9a45;--cf-l:rgba(246,130,31,.14);--cf-t:#fbad6a;
+  --link:#6ea8fe;--chart:#5b9bff;--chart-f:rgba(91,155,255,.14);--bar:#4c8dff;
+  --ok:#22c55e;--ok-t:#4ade80;--ok-l:rgba(34,197,94,.12);--warn:#fbbf24;--warn-l:rgba(251,191,36,.12);--err:#f87171;--err-t:#fca5a5;--err-l:rgba(248,113,113,.12);
+  --info:#93c5fd;--info-l:rgba(59,130,246,.14);
+  --home:#5b9bff;--leave:#fbbf24;
+  --sh-pop:0 10px 30px rgba(0,0,0,.5);--sh-dlg:0 24px 60px rgba(0,0,0,.6);--card:rgba(20,20,20,.88);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--canvas);color:var(--fg);font:400 14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss01"}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
+svg.i{width:16px;height:16px;flex:none;display:block}
+svg.s{width:16px;height:16px}
+kbd{font:500 11px/1 Inter,system-ui,sans-serif;color:var(--mut);border:1px solid var(--border);border-radius:4px;padding:3px 5px;background:var(--surface)}
+
+/* ---------- sidebar ---------- */
+.side{position:fixed;left:0;top:0;bottom:0;width:258px;background:var(--side);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:30;transition:width .2s ease,transform .2s ease}
+.acct{height:52px;display:flex;align-items:center;gap:10px;padding:0 12px 0 16px;flex:none;color:var(--head)}
+.acct:hover{text-decoration:none}
+.logo{width:28px;height:28px;border-radius:7px;background:var(--cf);color:#fff;display:grid;place-items:center;flex:none}
+.logo svg{width:17px;height:17px;stroke-width:1.9}
+.acct .n{font-weight:500;font-size:14px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acct .sel{color:var(--sub)}
+.qs{display:flex;align-items:center;gap:8px;height:34px;margin:6px 12px 10px;padding:0 6px 0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--sub)}
+.qs:focus-within{border-color:var(--cf);box-shadow:0 0 0 2px var(--cf-l)}
+.qs input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--fg);font:inherit;font-size:13.5px}
+.qs input::placeholder{color:var(--mut)}
+.nav{display:flex;flex-direction:column;padding:0 12px;overflow-y:auto;flex:1;scrollbar-width:thin}
+.nav a,.sfoot a{display:flex;align-items:center;gap:12px;height:34px;padding:0 10px;margin-bottom:2px;border-radius:6px;color:var(--fg);font-size:14px;white-space:nowrap}
+.nav a:hover,.sfoot a:hover{background:var(--hover);text-decoration:none}
+.nav a .i,.sfoot a .i{color:var(--icon)}
+.nav a.on,.sfoot a.on{background:var(--nav-on);color:var(--head);font-weight:500}
+.nav a.on .i,.sfoot a.on .i{color:var(--head)}
+.nav a .x,.sfoot a .x{margin-left:auto;color:var(--sub)}
+.nav .sec{font-size:13px;color:var(--mut);padding:18px 10px 6px}
+.pill{margin-left:auto;font-size:11px;font-weight:500;line-height:18px;padding:0 6px;border:1px solid var(--border);border-radius:9px;color:var(--fg);background:var(--surface)}
+.pill.cf{border-color:transparent;background:var(--cf-l);color:var(--cf-t)}
+.sfoot{padding:10px 12px 8px;border-top:1px solid var(--border);margin:0 0 0;flex:none}
+.sfoot .row{display:flex;align-items:center;justify-content:space-between;padding:8px 2px 0}
+.collapse{width:30px;height:30px;border-radius:6px;display:grid;place-items:center;color:var(--icon)}
+.collapse:hover{background:var(--hover)}
+.mini .side{width:60px}
+.mini .acct .n,.mini .acct .sel,.mini .qs,.mini .nav .sec,.mini .nav a span,.mini .pill,.mini .sfoot a span,.mini .nav a .x,.mini .sfoot a .x{display:none}
+.mini .acct{padding:0 16px}
+.mini .nav{padding:8px 10px}.mini .sfoot{padding:10px 10px 8px}
+.mini .nav a,.mini .sfoot a{justify-content:center;padding:0}
+.mini .top{left:60px}.mini .main{margin-left:60px}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:25;display:none}
+/* supergraphics: big orange shapes fixed behind the page, drawn by supergraphics() */
+.sg{position:fixed;left:258px;top:52px;right:0;bottom:0;z-index:0;pointer-events:none;overflow:hidden;transition:left .2s ease}
+.sg svg{display:block}
+.mini .sg{left:60px}
+
+/* ---------- top bar ---------- */
+.top{position:fixed;left:258px;right:0;top:0;height:52px;background:var(--canvas);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:22px;padding:0 20px 0 24px;z-index:20;transition:left .2s ease}
+.top .sp{flex:1}
+.tlink{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:500;color:var(--head);white-space:nowrap}
+.tlink:hover{text-decoration:none;opacity:.75}
+.tlink .i{color:var(--icon)}
+.tstat{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap}
+.tstat .dt{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.tstat.err .dt{background:var(--err)}.tstat.err{color:var(--err-t)}
+.tb-ic{width:32px;height:32px;border-radius:6px;display:grid;place-items:center;color:var(--icon)}
+.tb-ic:hover{background:var(--hover)}
+.tb-ic svg{width:18px;height:18px}
+.mob{display:none}
+.menu{position:fixed;top:48px;right:16px;width:260px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh-pop);z-index:40;padding:6px;animation:pop .12s ease}
+@keyframes pop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.menu .who{padding:10px 10px 12px;border-bottom:1px solid var(--border);margin-bottom:6px}
+.menu .who b{display:block;color:var(--head);font-weight:500}
+.menu .who span{color:var(--mut);font-size:12.5px}
+.menu a,.menu button{display:flex;align-items:center;gap:12px;width:100%;height:34px;padding:0 10px;border-radius:6px;color:var(--fg);text-align:left;font-size:14px}
+.menu a:hover,.menu button:hover{background:var(--hover);text-decoration:none}
+.menu .i{color:var(--icon)}
+.menu .sw2{margin-left:auto;width:28px;height:16px;border-radius:8px;background:var(--line);position:relative}
+.menu .sw2:after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left .15s}
+:root[data-theme=dark] .menu .sw2{background:var(--cf)}
+:root[data-theme=dark] .menu .sw2:after{left:14px}
+
+/* ---------- page ---------- */
+.main{margin-left:258px;padding-top:52px;transition:margin .2s ease;min-width:0;position:relative;z-index:1}
+.content{max-width:1080px;margin:0 auto;padding:32px 32px 72px}
+.view{display:none}.view.on{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.phead{margin-bottom:24px}
+.crumbs{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:13px;margin-bottom:6px;white-space:nowrap;overflow:hidden}
+.crumbs a{color:var(--mut)}.crumbs a:hover{color:var(--head);text-decoration:none}
+.crumbs b{color:var(--head);font-weight:500;overflow:hidden;text-overflow:ellipsis}
+.crumbs .i{width:13px;height:13px;color:var(--sub)}
+.prow{display:flex;align-items:center;gap:12px}
+.phead h1,.dh h1{font-size:24px;font-weight:500;letter-spacing:-.01em;color:var(--head);margin:0;line-height:1.25}
+.psub{color:var(--mut);margin-top:4px}
+.h4{font-size:24px;font-weight:500;color:var(--head);margin:0}
+.h6{font-size:14px;font-weight:500;margin:0;color:var(--head)}
+.sub1{color:var(--mut);margin:4px 0 0}
+.cap{font-size:13px;color:var(--mut)}
+.mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;font-size:13px}
+.mut{color:var(--mut)}
+
+/* ---------- overview "Let's get to work" ---------- */
+.ovtop{max-width:1000px;margin:24px auto 0;text-align:center}
+.cta-pill{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border:1px solid var(--border);border-radius:19px;background:var(--surface);color:var(--head);font-weight:500;font-size:14px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.cta-pill:hover{text-decoration:none;border-color:var(--line)}
+.cta-pill .dt{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.cta-pill .i{color:var(--cf)}
+.hello{font-size:30px;font-weight:500;letter-spacing:-.02em;color:var(--head);margin:26px 0 30px}
+.frame{background:var(--frame);border:1px solid var(--border-s);border-radius:12px;padding:4px}
+.frame>.inner{background:var(--surface);border:1px solid var(--border);border-radius:9px}
+.bigsearch .inner{display:flex;align-items:center;gap:10px;height:44px;padding:0 10px 0 14px;color:var(--mut)}
+.bigsearch .inner:focus-within{border-color:var(--cf);box-shadow:0 0 0 2px var(--cf-l)}
+.bigsearch input{flex:1;border:0;outline:0;background:none;color:var(--fg);font:inherit;font-size:15px}
+.bigsearch input::placeholder{color:var(--mut)}
+.bigsearch kbd{margin-left:2px}
+.quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:26px;text-align:left}
+.qh{display:flex;align-items:center;gap:4px;height:22px;margin-bottom:8px;font-size:13px;color:var(--fg)}
+.qh a{color:var(--fg);display:flex;align-items:center;gap:4px}
+.qh .i{width:13px;height:13px;color:var(--sub)}
+.qh .dots{margin-left:auto;color:var(--sub)}
+.qtile{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;height:50px;padding:0 12px;border-radius:8px;background:var(--tile);color:var(--fg);font-size:13px;white-space:nowrap;overflow:hidden}
+a.qtile:hover,button.qtile:hover{background:var(--tile-h);text-decoration:none}
+.qtile .i{color:var(--icon);width:15px;height:15px}
+.qtile b{font-weight:500;color:var(--head)}
+.qtile span{overflow:hidden;text-overflow:ellipsis}
+.qrec{display:flex;align-items:center;gap:10px;height:34px;color:var(--mut);font-size:14px;white-space:nowrap;overflow:hidden}
+.qrec:hover{text-decoration:none;color:var(--head)}
+.qrec b{font-weight:400;color:var(--head);overflow:hidden;text-overflow:ellipsis}
+.qrec .i{color:var(--sub)}.qrec .x{margin-left:auto}
+.banner{margin-top:44px}
+.banner .inner{display:flex;align-items:stretch;min-height:96px;overflow:hidden;text-align:left}
+.banner .art{width:98px;flex:none;background:linear-gradient(135deg,#ff9a3d,#f6821f 45%,#e0560b);position:relative;overflow:hidden}
+.banner .art:after{content:"";position:absolute;width:150px;height:150px;border-radius:50%;left:-36px;top:-22px;background:repeating-linear-gradient(-55deg,rgba(255,255,255,.35) 0 1.5px,transparent 1.5px 5px);opacity:.75}
+.banner .art.err{background:linear-gradient(135deg,#f87171,#dc2626 50%,#991b1b)}
+.banner .txt{flex:1;padding:16px 20px;min-width:0}
+.banner .txt b{display:block;font-size:16px;font-weight:500;color:var(--head);margin-bottom:4px}
+.banner .txt span{color:var(--mut);font-size:13.5px;line-height:1.45}
+.banner .go{display:flex;align-items:center;padding:0 20px}
+.sech{display:flex;align-items:center;gap:10px;margin:44px 0 12px}
+.sech h2{font-size:18px;font-weight:500;color:var(--head);margin:0;letter-spacing:-.01em}
+.sech .sp{flex:1}
+.range{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-weight:500;color:var(--head)}
+.range .i{color:var(--icon)}
+.icbtn{width:36px;height:36px;border-radius:6px;display:grid;place-items:center;color:var(--icon)}
+.icbtn:hover{background:var(--hover)}
+
+/* metric cards */
+.metric{display:block;color:inherit;padding:14px 16px 12px}
+a.metric:hover{text-decoration:none;border-color:var(--line)}
+.mh{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--fg);margin-bottom:2px}
+.mh .i{color:var(--sub)}
+.mvrow{display:flex;align-items:baseline;gap:8px}
+.mv{font-size:24px;font-weight:500;color:var(--head);letter-spacing:-.01em;line-height:1.3}
+.md{font-size:12.5px;color:var(--mut)}
+.delta{display:inline-flex;align-items:center;gap:2px;font-size:12.5px;font-weight:500;color:var(--mut)}
+.delta .i{width:13px;height:13px;stroke-width:2}
+.delta.good{color:var(--ok)}.delta.bad{color:var(--err)}
+.mchart{margin-top:6px;position:relative}
+.mchart svg{display:block;width:100%}
+.nodata{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12px;color:var(--mut);border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:2px 10px}
+/* stat card (small metric), used by statCard() */
+.stat{padding:14px 16px}
+.stat .t{font-size:13px;color:var(--fg);display:flex;justify-content:space-between}
+.stat .t .i{color:var(--sub)}
+.stat .v{font-size:24px;font-weight:500;color:var(--head);line-height:1.3;margin-top:2px;letter-spacing:-.01em}
+.stat .d{font-size:12.5px;color:var(--mut);margin-top:2px}
+.statrow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+/* "top hosts" style bars */
+.trow{display:grid;grid-template-columns:minmax(0,1fr) minmax(80px,42%) 34px;align-items:center;gap:14px;padding:9px 16px}
+.trow a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbar{height:8px;border-radius:4px;background:var(--tile);overflow:hidden}
+.tbar i{display:block;height:100%;border-radius:4px;background:var(--bar)}
+.trow span{text-align:right;color:var(--head);font-variant-numeric:tabular-nums}
+
+/* ---------- cards ---------- */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);min-width:0;overflow:hidden}
+.card-h{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.card-h .sp{flex:1}
+.card-h+.list,.card-h+.tw,.card-h+.kv{border-top:1px solid var(--border)}
+.card-b{padding:0 16px 16px}
+.card-f{border-top:1px solid var(--border);background:var(--canvas);padding:10px 16px;display:flex;justify-content:flex-end;gap:8px}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+.g11{grid-template-columns:repeat(2,minmax(0,1fr))}
+.mt{margin-top:16px}
+
+/* avatars: quiet tiles with a coloured glyph */
+.av{width:32px;height:32px;border-radius:7px;display:grid;place-items:center;flex:none;background:var(--tile);color:var(--icon)}
+.av svg{width:17px;height:17px}
+.av.lg{width:56px;height:56px;border-radius:12px}.av.lg svg{width:28px;height:28px}
+.av.sq{border-radius:7px}
+.c-blue{color:#2563eb}.c-green{color:#059669}.c-orange{color:#ea580c}.c-red{color:#dc2626}.c-purple{color:#7c3aed}.c-teal{color:#0d9488}.c-grey{color:var(--icon)}
+:root[data-theme=dark] .c-blue{color:#60a5fa}:root[data-theme=dark] .c-green{color:#34d399}:root[data-theme=dark] .c-orange{color:#fb923c}
+:root[data-theme=dark] .c-red{color:#f87171}:root[data-theme=dark] .c-purple{color:#a78bfa}:root[data-theme=dark] .c-teal{color:#2dd4bf}
+.avw{position:relative;flex:none}
+.avw .pres{position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;border:2px solid var(--surface);background:var(--sub)}
+.avw .pres.on{background:var(--ok)}
+.av.lg+.pres{width:14px;height:14px;border-width:3px;right:-3px;bottom:-3px}
+
+/* badges */
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:11px;font-size:12px;font-weight:500;white-space:nowrap;vertical-align:middle;background:var(--tile);color:var(--fg)}
+.chip .dt{width:6px;height:6px;border-radius:50%;background:currentColor}
+.chip.ok{background:var(--ok-l);color:var(--ok-t)}.chip.off{background:var(--tile);color:var(--mut)}
+.chip.warn{background:var(--warn-l);color:var(--warn)}.chip.err{background:var(--err-l);color:var(--err-t)}
+.chip.pri{background:var(--info-l);color:var(--info)}
+.chip.out{background:none;border:1px solid var(--border);color:var(--mut)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+/* filter pills */
+button.chip{height:32px;padding:0 12px;border-radius:6px;font-size:13px;color:var(--fg);background:var(--surface);border:1px solid var(--border)}
+button.chip:hover{background:var(--hover)}
+button.chip.sel{background:var(--head);border-color:var(--head);color:var(--surface)}
+button.chip .n{color:var(--mut);font-weight:400}
+button.chip.sel .n{color:var(--surface);opacity:.7}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 14px;border-radius:6px;font-weight:500;font-size:14px;white-space:nowrap;transition:background .12s,border-color .12s;border:1px solid transparent}
+.btn:hover{text-decoration:none}
+.btn svg{width:15px;height:15px}
+.btn.ct{background:var(--cf);color:#fff;box-shadow:inset 0 -1px 0 rgba(0,0,0,.12),0 1px 2px rgba(246,130,31,.25)}
+.btn.ct:hover{background:var(--cf-d)}
+.btn.ol{background:var(--surface);border-color:var(--border);color:var(--head)}
+.btn.ol:hover{background:var(--hover);border-color:var(--line)}
+.btn.tx{color:var(--link);padding:0 8px;height:30px}
+.btn.tx:hover{background:var(--hover)}
+.btn.gr{background:var(--tile);color:var(--head)}
+.btn.gr:hover{background:var(--tile-h)}
+.btn.er{color:var(--err-t)}.btn.er:hover{background:var(--err-l)}
+.btn.ol.er{color:var(--err-t)}
+.btn.sm{height:30px;padding:0 10px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:default}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:sp .8s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* alerts */
+.alert{display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:var(--r);margin-bottom:16px;flex-wrap:wrap;border:1px solid}
+.alert>.i{width:18px;height:18px}
+.alert.warn{background:var(--warn-l);border-color:rgba(180,83,9,.2);color:var(--warn)}
+.alert.err{background:var(--err-l);border-color:rgba(220,38,38,.2);color:var(--err)}
+.alert.ok{background:var(--ok-l);border-color:rgba(22,163,74,.2);color:var(--ok)}
+.alert .m{flex:1;min-width:200px;color:var(--fg)}.alert b{font-weight:500;color:var(--head)}
+
+/* lists */
+.list{list-style:none;margin:0;padding:0}
+.li{display:flex;align-items:center;gap:12px;padding:10px 16px;color:inherit;min-width:0}
+.list>li+li>.li,.list>li+li>div.li{border-top:1px solid var(--border-s)}
+a.li:hover,.li.click:hover{background:var(--hover);cursor:pointer;text-decoration:none}
+.li .tx{min-width:0;flex:1}
+.li .p{font-size:14px;color:var(--head);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li .s2{font-size:12.5px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li .end{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.li .tm{font-size:12.5px;color:var(--mut);white-space:nowrap}
+.empty{padding:28px 16px;text-align:center;color:var(--mut)}
+.empty .i{width:32px;height:32px;margin:0 auto 8px;color:var(--sub)}
+
+/* table */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-weight:500;font-size:13px;padding:10px 16px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--mut);background:var(--canvas)}
+td{padding:11px 16px;border-bottom:1px solid var(--border-s);vertical-align:middle;font-size:14px}
+tbody tr:last-child td{border-bottom:0}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--hover)}
+tr.click .cell .p{color:var(--link);font-weight:500}
+.cell{display:flex;align-items:center;gap:12px;min-width:0}
+.cell .p{font-size:14px;color:var(--head)}
+.cell .s2{font-size:12.5px;color:var(--mut)}
+.chev{color:var(--sub);width:16px}
+.tfoot{border-top:1px solid var(--border);padding:10px 16px;color:var(--mut);font-size:13px;background:var(--canvas)}
+
+/* toolbar */
+.tb{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 16px}
+.search{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:6px;flex:1;min-width:200px;max-width:320px;color:var(--sub);background:var(--surface)}
+.search:focus-within{border-color:var(--cf);box-shadow:0 0 0 2px var(--cf-l)}
+.search input{border:0;outline:0;background:none;color:var(--fg);font:inherit;font-size:14px;flex:1;min-width:0}
+
+/* tabs */
+.tabs{display:flex;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;gap:4px}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{height:40px;padding:0 10px;font-weight:500;font-size:14px;color:var(--mut);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs button:hover{color:var(--head)}
+.tabs button.on{color:var(--head);border-bottom-color:var(--cf)}
+
+/* key-value */
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;padding:0 16px}
+.kv>div{display:flex;gap:16px;padding:10px 0;border-bottom:1px solid var(--border-s);min-width:0}
+.kv>div:last-child{border-bottom:0}
+.kv dt{color:var(--mut);width:132px;flex:none}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere;color:var(--head)}
+
+/* device page header */
+.dh{margin-bottom:20px}
+.dh .top2{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.dh .tx{flex:1;min-width:220px}
+.dh .meta{color:var(--mut);display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.dh .tabs{margin-top:20px}
+
+/* availability */
+.tl{padding:4px 16px 14px}
+.tl .r{display:grid;grid-template-columns:44px 1fr;gap:12px;align-items:center;height:20px;margin-bottom:6px}
+.tl .r span{color:var(--mut);font-size:12.5px}
+.tl .bar2{position:relative;height:10px;border-radius:5px;background:var(--tile);overflow:hidden}
+.tl .bar2 i{position:absolute;top:0;bottom:0;background:var(--chart);border-radius:2px}
+.tl .ax{display:grid;grid-template-columns:44px 1fr;gap:12px;color:var(--sub);font-size:11.5px}
+.tl .ax div{display:flex;justify-content:space-between}
+.prog{height:6px;border-radius:3px;background:var(--tile);overflow:hidden;margin-top:8px}
+.prog i{display:block;height:100%;background:var(--bar);border-radius:3px}
+.linprog{height:2px;background:var(--cf-l);overflow:hidden;position:relative}
+.linprog:after{content:"";position:absolute;inset:0;width:40%;background:var(--cf);animation:lp 1.2s ease-in-out infinite}
+@keyframes lp{from{left:-40%}to{left:100%}}
+
+/* presence */
+.pchart{position:relative;padding:4px 16px 8px}
+.pchart svg{display:block;width:100%;overflow:visible}
+.pchart [data-tip]{cursor:pointer}
+.pkey{display:flex;gap:18px;flex-wrap:wrap;color:var(--mut);font-size:12.5px;padding:0 16px 14px;align-items:center}
+.pkey svg{display:inline-block;vertical-align:-2px;margin-right:6px}
+.seg2{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--surface)}
+.seg2 button{height:30px;padding:0 12px;font-size:13px;font-weight:500;color:var(--mut)}
+.seg2 button+button{border-left:1px solid var(--border)}
+.seg2 button.on{background:var(--tile);color:var(--head)}
+
+/* charts */
+.chart{position:relative;padding:0 16px 4px}
+.chart svg{display:block;width:100%}
+.tip{position:absolute;pointer-events:none;background:var(--surface);color:var(--fg);border:1px solid var(--border);padding:7px 10px;border-radius:6px;font-size:12px;white-space:nowrap;transform:translate(-50%,-100%);display:none;z-index:3;box-shadow:var(--sh-pop)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--mut);font-size:12.5px;padding:4px 16px 14px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:0}
+.legend b{color:var(--head);font-weight:500;margin-left:6px}
+
+/* form fields: label above the input */
+.tf{position:relative;margin-top:16px;display:flex;flex-direction:column}
+.tf label{order:-1;font-size:13px;font-weight:500;color:var(--head);margin-bottom:6px}
+.tf input,.tf textarea,.fsel{width:100%;height:36px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--fg);font:inherit;font-size:14px;outline:0}
+.tf textarea{height:auto;min-height:96px;padding:8px 10px;resize:vertical;display:block}
+.tf input:focus,.tf textarea:focus,.fsel:focus{border-color:var(--cf);box-shadow:0 0 0 2px var(--cf-l)}
+.tf .help{font-size:12.5px;color:var(--mut);margin-top:5px}
+.checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px}
+details summary{color:var(--link);cursor:pointer}
+
+/* switch */
+.sw{display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:16px}
+.sw input{display:none}
+.sw .tr{width:30px;height:18px;border-radius:9px;background:var(--line);position:relative;flex:none;transition:background .15s;margin-top:2px}
+.sw .tr:after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left .15s}
+.sw input:checked+.tr{background:var(--cf)}
+.sw input:checked+.tr:after{left:14px}
+.sw small{display:block;color:var(--mut);font-size:12.5px}
+
+/* dialogs: framed, like Cloudflare's analytics panel */
+dialog{border:1px solid var(--border);border-radius:14px;background:var(--frame);color:var(--fg);padding:0 6px 6px;width:min(520px,calc(100vw - 32px));box-shadow:var(--sh-dlg);max-height:calc(100vh - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.dlg-h{display:flex;align-items:center;justify-content:space-between;padding:12px 10px 10px 14px}
+.dlg-h h3{margin:0;font-size:15px;font-weight:500;color:var(--head)}
+dialog form{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px 18px}
+dialog p{margin:0;color:var(--mut)}
+dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+
+/* toast */
+.snack{position:fixed;right:20px;bottom:20px;transform:translateY(140px);background:var(--head);color:var(--surface);padding:11px 14px;border-radius:8px;box-shadow:var(--sh-pop);display:flex;gap:12px;align-items:center;min-width:260px;max-width:calc(100vw - 32px);z-index:50;transition:transform .22s ease;font-size:14px}
+.snack.on{transform:none}
+.snack .i{width:18px;height:18px}
+
+/* activity day headers */
+.dayh{padding:14px 16px 6px;font-size:12px;font-weight:500;color:var(--mut);background:var(--canvas);border-top:1px solid var(--border-s)}
+.list>.dayh:first-child{border-top:0}
+
+/* touch screens */
+@media (hover:none),(pointer:coarse){
+ .btn{height:40px}.btn.sm{height:36px}
+ button.chip{height:38px}
+ .nav a,.sfoot a{height:42px}
+ .search,.qs{height:42px}.search input,.qs input,.bigsearch input,.tf input,.tf textarea,.fsel{font-size:16px}
+ .tf input,.fsel{height:42px}
+ td{padding:14px 16px}.li{padding:13px 16px}
+ .tabs button{height:46px}
+ a.li:hover,.li.click:hover,tr.click:hover td,.btn.ol:hover,button.chip:hover,.nav a:hover:not(.on){background:none}
+ button.chip.sel:hover{background:var(--head)}
+ a.li:active,tr.click:active td{background:var(--hover)}
+}
+@media(max-width:1100px){.g4,.statrow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){
+ .g21,.g11,.g3{grid-template-columns:1fr}.kv{grid-template-columns:1fr}
+ .side,.mini .side{width:258px;transform:translateX(-100%);visibility:hidden;transition:transform .2s ease,visibility 0s .2s}
+ .open .side{transform:none;visibility:visible;box-shadow:var(--sh-dlg);transition:transform .2s ease}
+ .open .scrim{display:block}
+ .mini .acct .n,.mini .acct .sel,.mini .qs,.mini .nav .sec,.mini .nav a span,.mini .pill,.mini .sfoot a span,.mini .nav a .x,.mini .sfoot a .x{display:revert}
+ .mini .nav a,.mini .sfoot a{justify-content:flex-start;padding:0 10px}
+ .top,.mini .top{left:0;padding:0 12px;gap:14px}
+ .sg,.mini .sg{left:0}
+ .main,.mini .main{margin-left:0}
+ .mob{display:grid}
+ .collapse{display:none}
+ .quick{grid-template-columns:1fr;gap:16px}
+}
+@media(max-width:640px){
+ .content{padding:20px 14px 64px}
+ .hide-s{display:none!important}
+ .hello{font-size:24px;margin:18px 0 20px}
+ .g4,.statrow{grid-template-columns:1fr 1fr;gap:10px}
+ .grid{gap:10px}.mt{margin-top:10px}
+ .banner .art{width:100%;height:56px}
+ .banner .inner{flex-wrap:wrap}.banner .txt{flex-basis:100%}.banner .go{flex-basis:100%;padding:0 20px 16px}
+ .bigsearch kbd{display:none}
+ .sech{margin-top:32px}
+ .kv dt{width:110px}
+ .checks{grid-template-columns:1fr}
+ .snack{left:12px;right:12px;bottom:12px;min-width:0}
+ .menu{right:8px;left:8px;width:auto}
+ .trow{grid-template-columns:minmax(0,1fr) 30% 30px}
+}
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <symbol id="i-dash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1" /><path d="M5 16h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1" /><path d="M15 12h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1" /><path d="M15 4h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1" /></symbol>
+ <symbol id="i-devices" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 9a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-10" /><path d="M18 8v-3a1 1 0 0 0 -1 -1h-13a1 1 0 0 0 -1 1v12a1 1 0 0 0 1 1h9" /><path d="M16 9h2" /></symbol>
+ <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M3.6 9h16.8" /><path d="M3.6 15h16.8" /><path d="M11.5 3a17 17 0 0 0 0 18" /><path d="M12.5 3a17 17 0 0 1 0 18" /></symbol>
+ <symbol id="i-history" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8l0 4l2 2" /><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5" /></symbol>
+ <symbol id="i-tune" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065" /><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /></symbol>
+ <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l-2 0l9 -9l9 9l-2 0" /><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" /><path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" /></symbol>
+ <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-14" /><path d="M11 4h2" /><path d="M12 17v.01" /></symbol>
+ <symbol id="i-tablet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v16a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1v-16" /><path d="M11 17a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /></symbol>
+ <symbol id="i-laptop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19l18 0" /><path d="M5 7a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v8a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1l0 -8" /></symbol>
+ <symbol id="i-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1v-10" /><path d="M7 20h10" /><path d="M9 16v4" /><path d="M15 16v4" /></symbol>
+ <symbol id="i-tv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2l0 -9" /><path d="M16 3l-4 4l-4 -4" /></symbol>
+ <symbol id="i-router" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2l0 -4" /><path d="M17 17l0 .01" /><path d="M13 17l0 .01" /><path d="M15 13l0 -2" /><path d="M11.75 8.75a4 4 0 0 1 6.5 0" /><path d="M8.5 6.5a8 8 0 0 1 13 0" /></symbol>
+ <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18l.01 0" /><path d="M9.172 15.172a4 4 0 0 1 5.656 0" /><path d="M6.343 12.343a8 8 0 0 1 11.314 0" /><path d="M3.515 9.515c4.686 -4.687 12.284 -4.687 17 0" /></symbol>
+ <symbol id="i-print" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 17h2a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2h-14a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h2" /><path d="M17 9v-4a2 2 0 0 0 -2 -2h-6a2 2 0 0 0 -2 2v4" /><path d="M7 15a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2l0 -4" /></symbol>
+ <symbol id="i-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2" /><path d="M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /></symbol>
+ <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -14" /><path d="M9 14a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M12 7l0 .01" /></symbol>
+ <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.785 6l8.215 8.215l-2.054 2.054a5.81 5.81 0 1 1 -8.215 -8.215l2.054 -2.054" /><path d="M4 20l3.5 -3.5" /><path d="M15 4l-3.5 3.5" /><path d="M20 9l-3.5 3.5" /></symbol>
+ <symbol id="i-ac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16a3 3 0 0 1 -3 3" /><path d="M16 16a3 3 0 0 0 3 3" /><path d="M12 16v4" /><path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2l0 -4" /><path d="M7 13v-3a1 1 0 0 1 1 -1h8a1 1 0 0 1 1 1v3" /></symbol>
+ <symbol id="i-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h1m8 -9v1m8 8h1m-15.4 -6.4l.7 .7m12.1 -.7l-.7 .7" /><path d="M9 16a5 5 0 1 1 6 0a3.5 3.5 0 0 0 -1 3a2 2 0 0 1 -4 0a3.5 3.5 0 0 0 -1 -3" /><path d="M9.7 17l4.6 0" /></symbol>
+ <symbol id="i-game" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5h3.5a5 5 0 0 1 0 10h-5.5l-4.015 4.227a2.3 2.3 0 0 1 -3.923 -2.035l1.634 -8.173a5 5 0 0 1 4.904 -4.019h3.4" /><path d="M14 15l4.07 4.284a2.3 2.3 0 0 0 3.925 -2.023l-1.6 -8.232" /><path d="M8 9v2" /><path d="M7 10h2" /><path d="M14 10h2" /></symbol>
+ <symbol id="i-nas" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-2" /><path d="M3 15a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3l0 -2" /><path d="M7 8l0 .01" /><path d="M7 16l0 .01" /><path d="M11 8h6" /><path d="M11 16h6" /></symbol>
+ <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-2" /><path d="M3 15a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3l0 -2" /><path d="M7 8l0 .01" /><path d="M7 16l0 .01" /></symbol>
+ <symbol id="i-watch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a3 3 0 0 1 3 -3h6a3 3 0 0 1 3 3v6a3 3 0 0 1 -3 3h-6a3 3 0 0 1 -3 -3v-6" /><path d="M9 18v3h6v-3" /><path d="M9 6v-3h6v3" /></symbol>
+ <symbol id="i-unknown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M12 16v.01" /><path d="M12 13a2 2 0 0 0 .914 -3.782a1.98 1.98 0 0 0 -2.414 .483" /></symbol>
+ <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" /><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" /></symbol>
+ <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454l0 .008" /></symbol>
+ <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" /><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7" /></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /><path d="M21 21l-6 -6" /></symbol>
+ <symbol id="i-person" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0" /><path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" /></symbol>
+ <symbol id="i-speed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /><path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M13.41 10.59l2.59 -2.59" /><path d="M7 12a5 5 0 0 1 5 -5" /></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /><path d="M9 12l2 2l4 -4" /></symbol>
+ <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4" /><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0" /><path d="M12 16h.01" /></symbol>
+ <symbol id="i-error" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M12 8v4" /><path d="M12 16h.01" /></symbol>
+ <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0" /><path d="M5 12l6 6" /><path d="M5 12l6 -6" /></symbol>
+ <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6l-6 6" /></symbol>
+ <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /><path d="M13.5 6.5l4 4" /></symbol>
+ <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06" /><path d="M15 19l2 2l4 -4" /></symbol>
+ <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 6a7.75 7.75 0 1 0 10 0" /><path d="M12 4l0 8" /></symbol>
+ <symbol id="i-delete" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l16 0" /><path d="M10 11l0 6" /><path d="M14 11l0 6" /><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" /><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" /></symbol>
+ <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2" /><path d="M9 12h12l-3 -3" /><path d="M18 15l3 -3" /></symbol>
+ <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6" /><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0" /><path d="M8 11v-4a4 4 0 1 1 8 0v4" /></symbol>
+ <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14" /><path d="M5 12l14 0" /></symbol>
+ <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10h14l-4 -4" /><path d="M17 14h-14l4 4" /></symbol>
+ <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14" /><path d="M18 13l-6 6" /><path d="M6 13l6 6" /></symbol>
+ <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14" /><path d="M18 11l-6 -6" /><path d="M6 11l6 -6" /></symbol>
+ <symbol id="i-cloud-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.58 5.548c.24 -.11 .492 -.207 .752 -.286c1.88 -.572 3.956 -.193 5.444 1c1.488 1.19 2.162 3.007 1.77 4.769h.99c1.913 0 3.464 1.56 3.464 3.486c0 .957 -.383 1.824 -1.003 2.454m-2.997 1.033h-11.343c-2.572 -.004 -4.657 -2.011 -4.657 -4.487c0 -2.475 2.085 -4.482 4.657 -4.482c.13 -.582 .37 -1.128 .7 -1.62" /><path d="M3 3l18 18" /></symbol>
+ <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" /><path d="M9 17v1a3 3 0 0 0 6 0v-1" /></symbol>
+ <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" /><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6" /></symbol>
+ <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l16 0" /><path d="M4 12l16 0" /><path d="M4 18l16 0" /></symbol>
+ <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" /><path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /><path d="M21 21v-2a4 4 0 0 0 -3 -3.85" /></symbol>
+ <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8l4 -16l3 8h4" /></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M12 7v5l3 3" /></symbol>
+ <symbol id="i-trend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6 -6l4 4l8 -8" /><path d="M14 7l7 0l0 7" /></symbol>
+ <symbol id="i-up-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7l-10 10" /><path d="M8 7l9 0l0 9" /></symbol>
+ <symbol id="i-down-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10" /><path d="M17 8l0 9l-9 0" /></symbol>
+ <symbol id="i-dots" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></symbol>
+ <symbol id="i-wifi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18l.01 0" /><path d="M9.172 15.172a4 4 0 0 1 5.656 0" /><path d="M6.343 12.343a7.963 7.963 0 0 1 3.864 -2.14m4.163 .155a7.965 7.965 0 0 1 3.287 2" /><path d="M3.515 9.515a12 12 0 0 1 3.544 -2.455m3.101 -.92a12 12 0 0 1 10.325 3.374" /><path d="M3 3l18 18" /></symbol>
+ <symbol id="i-display" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1v-12" /><path d="M3 13h18" /><path d="M8 21h8" /><path d="M10 17l-.5 4" /><path d="M14 17l.5 4" /></symbol>
+ <symbol id="i-selector" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l4 -4l4 4" /><path d="M16 15l-4 4l-4 -4" /></symbol>
+ <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12" /><path d="M16 3v4" /><path d="M8 3v4" /><path d="M4 11h16" /><path d="M11 15h1" /><path d="M12 15v3" /></symbol>
+ <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6l-12 12" /><path d="M6 6l12 12" /></symbol>
+ <symbol id="i-sidebar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" /><path d="M9 4l0 16" /></symbol>
+ <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6" /><path d="M11 13l9 -9" /><path d="M15 4h5v5" /></symbol>
+ <symbol id="i-user-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /><path d="M9 10a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M6.168 18.849a4 4 0 0 1 3.832 -2.849h4a4 4 0 0 1 3.834 2.855" /></symbol>
+ <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M12 16v.01" /><path d="M12 13a2 2 0 0 0 .914 -3.782a1.98 1.98 0 0 0 -2.414 .483" /></symbol>
+ <symbol id="i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2m0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2m-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6" /></symbol>
+ <symbol id="i-chev-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6l6 -6" /></symbol>
+ <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.555 3.843l3.602 3.602a2.877 2.877 0 0 1 0 4.069l-2.643 2.643a2.877 2.877 0 0 1 -4.069 0l-.301 -.301l-6.558 6.558a2 2 0 0 1 -1.239 .578l-.175 .008h-1.172a1 1 0 0 1 -.993 -.883l-.007 -.117v-1.172a2 2 0 0 1 .467 -1.284l.119 -.13l.414 -.414h2v-2h2v-2l2.144 -2.144l-.301 -.301a2.877 2.877 0 0 1 0 -4.069l2.643 -2.643a2.877 2.877 0 0 1 4.069 0" /><path d="M15 9h.01" /></symbol>
+ <symbol id="i-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v2.172a2 2 0 0 1 -.586 1.414l-4.414 4.414v7l-6 2v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227" /></symbol>
+ <symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0" /><path d="M13 18l6 -6" /><path d="M13 6l6 6" /></symbol>
+</svg>
+
+<div id="app">
+<aside class="side" id="side">
+  <a class="acct" href="#overview"><span class="logo"><svg class="i"><use href="#i-home"/></svg></span><span class="n">Home network</span><svg class="i sel"><use href="#i-selector"/></svg></a>
+  <label class="qs"><svg class="i"><use href="#i-search"/></svg><input id="hq" type="search" placeholder="Quick search..." autocomplete="off"><kbd>Ctrl K</kbd></label>
+  <nav class="nav" id="nav">
+    <a href="#overview" data-v="overview"><svg class="i"><use href="#i-home"/></svg><span>Overview</span></a>
+    <a href="#activity" data-v="activity"><svg class="i"><use href="#i-history"/></svg><span>Activity</span></a>
+    <div class="sec">Network</div>
+    <a href="#devices" data-v="devices"><svg class="i"><use href="#i-devices"/></svg><span>Devices</span><span class="pill cf" id="navNew" hidden></span></a>
+    <a href="#internet" data-v="internet"><svg class="i"><use href="#i-globe"/></svg><span>Internet</span></a>
+    <div class="sec">Display</div>
+    <a href="/display" target="_blank"><svg class="i"><use href="#i-display"/></svg><span>Wall display</span><svg class="i x"><use href="#i-ext"/></svg></a>
+  </nav>
+  <div class="sfoot">
+    <a href="#settings" data-v="settings"><svg class="i"><use href="#i-tune"/></svg><span>Manage account</span><svg class="i x"><use href="#i-chev"/></svg></a>
+    <div class="row"><button class="collapse" id="collapse" title="Collapse sidebar"><svg class="i"><use href="#i-sidebar"/></svg></button></div>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>
+<div class="sg" id="sg" aria-hidden="true"></div>
+<header class="top" id="bar">
+  <button class="tb-ic mob" id="menuBtn" aria-label="Menu"><svg class="i"><use href="#i-menu"/></svg></button>
+  <span class="sp"></span>
+  <span class="tstat" id="status"><span class="dt"></span>Connecting…</span>
+  <button class="tlink" id="refresh"><svg class="i"><use href="#i-refresh"/></svg><span class="hide-s">Refresh</span></button>
+  <a class="tlink hide-s" href="/display" target="_blank"><svg class="i"><use href="#i-display"/></svg>Wall display</a>
+  <button class="tb-ic" id="profBtn" aria-label="Account"><svg class="i"><use href="#i-user-circle"/></svg></button>
+</header>
+<div class="menu" id="profMenu" hidden>
+  <div class="who"><b>Home Hub</b><span>Raspberry Pi · <span class="mono" id="host"></span></span></div>
+  <a href="#settings"><svg class="i"><use href="#i-tune"/></svg>Settings</a>
+  <button id="theme"><svg class="i"><use href="#i-moon" id="themeIc"/></svg>Dark mode<span class="sw2"></span></button>
+  <a href="/display" target="_blank"><svg class="i"><use href="#i-display"/></svg>Wall display</a>
+  <a href="/logout"><svg class="i"><use href="#i-logout"/></svg>Sign out</a>
+</div>
+
+<main class="main"><div class="content">
+  <div class="phead" id="phead"><div class="crumbs" id="crumbs"></div><div class="prow"><div class="tx"><h1 id="title">Overview</h1><div class="psub" id="psub"></div></div></div></div>
+
+      <!-- OVERVIEW -->
+      <section class="view" id="v-overview">
+        <div class="ovtop">
+          <div id="ovPill"></div>
+          <h1 class="hello" id="hello">Hello.</h1>
+          <div class="frame bigsearch"><label class="inner"><svg class="i"><use href="#i-search"/></svg><input id="bigq" type="search" placeholder="Search devices, IP addresses, owners…" autocomplete="off"><kbd>Ctrl</kbd><kbd>K</kbd></label></div>
+          <div class="quick" id="ovQuick"></div>
+        </div>
+        <div id="ovBanner"></div>
+        <div class="sech"><h2>Analytics</h2><span class="sp"></span><span class="range"><svg class="i"><use href="#i-calendar"/></svg>Last 24 hours</span><button class="icbtn" onclick="load(true)" title="Refresh"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+        <div class="grid g11" id="ovBig"></div>
+        <div class="grid g4 mt" id="ovSmall"></div>
+        <div class="grid g11 mt">
+          <div class="card"><div class="card-h"><div><div class="h6">Devices by type</div><div class="cap">Everything the hub knows about</div></div></div><div id="ovTypes" style="padding:4px 0 10px"></div></div>
+          <div class="card"><div class="card-h"><div><div class="h6">Who's home</div><div class="cap">Based on phones connected to Wi-Fi</div></div></div><ul class="list" id="people"></ul></div>
+        </div>
+        <div class="grid g11 mt">
+          <div class="card"><div class="card-h"><div class="h6">Recently active devices</div><span class="sp"></span><a class="btn tx sm" href="#devices">View all</a></div><ul class="list" id="recentDev"></ul></div>
+          <div class="card"><div class="card-h"><div class="h6">What's been happening</div><span class="sp"></span><a class="btn tx sm" href="#activity">View all</a></div><ul class="list" id="evOv"></ul></div>
+        </div>
+      </section>
+
+      <!-- DEVICES -->
+      <section class="view" id="v-devices">
+        <div class="card">
+          <div class="tb">
+            <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="q" type="search" placeholder="Search devices"></label>
+            <div class="chips" id="filters"></div>
+          </div>
+          <div class="tw"><table><thead><tr><th>Name</th><th>Status</th><th class="hide-s">IP address</th><th class="hide-s">Made by</th><th class="hide-s">Last seen</th><th style="width:1%"></th></tr></thead><tbody id="devBody"></tbody></table></div>
+          <div class="tfoot" id="devFoot"></div>
+        </div>
+        <p class="cap" style="margin:12px 4px">Tip: click any device to see everything the hub knows about it, give it a friendly name, or check what it's running.</p>
+      </section>
+
+      <!-- DEVICE -->
+      <section class="view" id="v-device"><div id="dev"></div></section>
+
+      <!-- INTERNET -->
+      <section class="view" id="v-internet">
+        <div id="netAlert"></div>
+        <div class="grid g4" id="netStats"></div>
+        <div class="card mt"><div class="card-h"><div><div class="h6">Response time</div><div class="cap">Average every 10 minutes over the last 24 hours. Red marks show when the connection dropped.</div></div></div>
+          <div class="chart" id="chartNet"></div><div class="legend"><span><i style="background:var(--chart)"></i>Response time (ms)</span><span><i style="background:var(--err)"></i>Connection dropped</span></div></div>
+        <div class="card mt"><div class="card-h"><div><div class="h6">Outages</div><div class="cap">Times the internet stopped working in the last 7 days</div></div></div><div class="tw"><table><thead><tr><th>When</th><th>How long</th><th>Status</th></tr></thead><tbody id="outBody"></tbody></table></div></div>
+      </section>
+
+      <!-- ACTIVITY -->
+      <section class="view" id="v-activity">
+        <div class="card">
+          <div class="tb">
+            <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="eq" type="search" placeholder="Search activity"></label>
+            <div class="chips" id="evFilters"></div>
+          </div>
+          <ul class="list" id="evAll"></ul>
+          <div class="tfoot" style="text-align:center" id="evMore" hidden><button class="btn ol" onclick="loadEvents(true)">Show older</button></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view" id="v-settings">
+        <div style="max-width:760px">
+          <form class="card" id="alForm">
+            <div class="card-h"><div><div class="h6">Notifications</div><div class="cap">Get alerts on your phone through ntfy or Telegram</div></div></div>
+            <div class="card-b" style="border-top:1px solid var(--border);padding-top:4px">
+              <div class="tf"><input id="alNtfy" type="url" placeholder="https://ntfy.sh/your-topic" autocomplete="off" spellcheck="false"><label for="alNtfy">ntfy address</label><div class="help">Install the free ntfy app, subscribe to a hard-to-guess topic, and paste its address here · <a href="#" id="alGen">make one up for me</a></div></div>
+              <details style="margin-top:14px"><summary style="font-size:13px">More options: ntfy access token, Telegram</summary>
+                <div class="tf"><input id="alNtfyTok" type="password" autocomplete="off"><label for="alNtfyTok">ntfy access token (optional)</label><div class="help" id="alNtfyTokH">Only needed for a protected topic</div></div>
+                <div class="tf"><input id="alTgTok" type="password" autocomplete="off"><label for="alTgTok">Telegram bot token</label><div class="help" id="alTgTokH">From @BotFather</div></div>
+                <div class="tf"><input id="alTgChat" type="text" autocomplete="off"><label for="alTgChat">Telegram chat ID</label></div>
+              </details>
+              <div class="h6" style="margin:22px 0 2px">Tell me when</div>
+              <div class="checks" id="alKinds"></div>
+              <div class="grid g11" style="gap:12px">
+                <div class="tf"><select class="fsel" id="alGrace"></select><label for="alGrace">Watched device counts as offline after</label></div>
+                <div class="tf"><select class="fsel" id="alDigest"></select><label for="alDigest">Daily summary</label></div>
+              </div>
+            </div>
+            <div class="card-f"><button type="button" class="btn ol" id="alTest">Send test</button><button class="btn ct">Save</button></div>
+          </form>
+          <form class="card mt" id="pwForm">
+            <div class="card-h"><div><div class="h6">Password</div><div class="cap">Changing it signs out every other browser</div></div></div>
+            <div class="card-b" style="border-top:1px solid var(--border);padding-top:4px">
+              <div class="tf"><input id="pwCur" type="password" autocomplete="current-password" required><label for="pwCur">Current password</label></div>
+              <div class="grid g11" style="gap:12px">
+                <div class="tf"><input id="pwNew" type="password" autocomplete="new-password" minlength="8" required><label for="pwNew">New password</label><div class="help">At least 8 characters</div></div>
+                <div class="tf"><input id="pwNew2" type="password" autocomplete="new-password" minlength="8" required><label for="pwNew2">Confirm new password</label></div>
+              </div>
+            </div>
+            <div class="card-f"><button class="btn ct">Update password</button></div>
+          </form>
+          <div class="card mt"><div class="card-h"><div><div class="h6">Sign out</div><div class="cap">You stay signed in on this browser for 30 days</div></div><span class="sp"></span><a class="btn ol" href="/logout">Sign out</a></div></div>
+        </div>
+      </section>
+  </div>
+</main>
+</div>
+
+<dialog id="dlg"><div class="dlg-h"><h3>Edit device</h3><button type="button" class="tb-ic" onclick="dlg.close()" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div><form method="dialog" id="dform">
+  <p id="dsub" class="mono" style="font-size:12.5px"></p>
+  <div class="tf"><input type="text" id="dname" autocomplete="off"><label for="dname">Friendly name</label><div class="help" id="dhelp"></div></div>
+  <div class="tf"><select class="fsel" id="dtype"></select><label for="dtype">Device type</label><div class="help">“Automatic” lets the hub decide from what it finds</div></div>
+  <div class="grid g11" style="gap:12px"><div class="tf"><input type="text" id="downer" autocomplete="off" list="owners"><label for="downer">Owner</label></div>
+   <div class="tf"><input type="text" id="dloc" autocomplete="off" list="locs"><label for="dloc">Location</label></div></div>
+  <datalist id="owners"></datalist><datalist id="locs"></datalist>
+  <label class="sw" id="dwatchL"><input type="checkbox" id="dwatch"><span class="tr"></span><span>Alert me when it goes offline<small>For things that should always be on, like a camera, NAS or printer</small></span></label>
+  <label class="sw"><input type="checkbox" id="dperson"><span class="tr"></span><span>Show in “Who's home”<small>Turn this on for someone's phone to see when they arrive and leave</small></span></label>
+  <div class="row"><button type="button" class="btn ol" id="dcancel">Cancel</button><button class="btn ct" value="ok">Save</button></div>
+</form></dialog>
+<dialog id="cdlg"><div class="dlg-h"><h3 id="ctitle"></h3><button type="button" class="tb-ic" onclick="this.closest('dialog').close()" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div><form method="dialog">
+  <p id="ctext"></p>
+  <div class="row"><button class="btn ol" value="no">Cancel</button><button class="btn ct" value="yes" id="cok"></button></div>
+</form></dialog>
+<div class="snack" id="snack"><svg class="i" id="snackIc"><use href="#i-check"/></svg><span id="snackTx"></span></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ic=(n,cls='i')=>`<svg class="${cls}"><use href="#i-${n}"/></svg>`;
+let S=null,DV=null,filter='all',view='overview',devMac=null,devTab=null,pingRes=null,PR=null,PRdays=14,PRshort=false;
+const NOW=()=>Date.now()/1000;
+const ago=t=>{if(!t)return'never';const s=NOW()-t;return s<90?'just now':s<5400?Math.round(s/60)+' min ago':s<172800?Math.round(s/3600)+' hr ago':Math.round(s/86400)+' days ago'};
+const dur=s=>s<90?Math.round(s)+' sec':s<5400?Math.round(s/60)+' min':s<172800?(s/3600).toFixed(1)+' hours':(s/86400).toFixed(1)+' days';
+const fmt=t=>new Date(t*1000).toLocaleString([], {weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+const host=d=>(d.hostname||'').replace(/\.local$/,'');
+const shortVendor=v=>(v||'').replace(/,? (Inc|Ltd|LLC|Co|Corp|Corporation|Technologies|Technology|Foundation)\.?$/i,'').replace(/,? (Inc|Ltd|Co)\.?$/i,'').replace(/ Technologies$/,'');
+const label=d=>d.name||d.auto_name||d.dname||host(d)||(d.ident&&d.ident.maker&&d.ident.type!=='Unknown'?d.ident.maker+' '+d.ident.type.toLowerCase():'')||(d.vendor?shortVendor(d.vendor)+' '+kind(d).name.toLowerCase():'')||'Unknown device';
+
+async function api(path,body){
+ const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ if(r.status===401){location.href='/login';throw new Error('auth')}
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.statusText);return j}
+
+/* snackbar */
+let snT;function snack(msg,kind='ok'){$('#snackTx').textContent=msg;$('#snackIc').innerHTML=`<use href="#i-${kind==='ok'?'check':kind==='err'?'error':'warn'}"/>`;
+ $('#snackIc').style.color=kind==='ok'?'#81c784':kind==='err'?'#e57373':'#ffb74d';$('#snack').classList.add('on');clearTimeout(snT);snT=setTimeout(()=>$('#snack').classList.remove('on'),3800)}
+
+/* device type: name, icon, colour */
+const T=(name,icon,c)=>({name,icon,c});
+const TYPE_UI={'Phone':['phone','green'],'Tablet':['tablet','blue'],'Laptop':['laptop','blue'],'Computer':['desktop','blue'],'Server':['server','teal'],
+ 'NAS':['nas','teal'],'TV / streamer':['tv','purple'],'Smart speaker':['speaker','orange'],'Speaker':['speaker','orange'],'Camera':['cam','red'],
+ 'Printer':['print','grey'],'Router':['router','teal'],'Wi-Fi extender':['wifi','teal'],'Smart plug':['plug','orange'],'Air conditioner':['ac','blue'],
+ 'Smart home':['bulb','orange'],'Game console':['game','purple'],'Wearable':['watch','green'],'Unknown':['unknown','grey']};
+function kind(d){
+ if(d.ident&&TYPE_UI[d.ident.type])return T(d.ident.type==='Unknown'?'Unknown device':d.ident.type,...TYPE_UI[d.ident.type]);
+ return kind0(d)}
+function kind0(d){
+ const sv=(d.services||Object.keys(d.info?.mdns?.services||{})).join(' ');
+ const h=[d.name,d.dname,d.hostname,d.model,d.vendor].join(' ').toLowerCase();
+ if(/internetgatewaydevice/i.test(d.info?.upnp?.deviceType||'')||/cr1000|router|gateway/.test(h)||d.ip==='192.168.1.1')return T('Router','router','teal');
+ if(/ex6\d{3}|extender|netgear/.test(h))return T('Wi-Fi extender','wifi','teal');
+ if(/_ipp|_printer|_uscan|_pdl/.test(sv)||/printer|envy|laserjet|officejet/.test(h))return T('Printer','print','grey');
+ if(/_amzn-wplay/.test(sv)||/fire ?tv|roku|chromecast|apple tv|vizio/.test(h))return T('TV','tv','purple');
+ if(/_googlecast/.test(sv))return T('Cast device','tv','purple');
+ if(/arlo|vmc\d/.test(h))return T('Camera','cam','red');
+ if(/plug/.test(h))return T('Smart plug','plug','orange');
+ if(/lge_ac|air ?con/.test(h))return T('Air conditioner','ac','blue');
+ if(/_spotify-connect/.test(sv)&&/amazon/.test(h))return T('Smart speaker','speaker','orange');
+ if(/amazon/.test(h)&&!/_apple/.test(sv))return T('Amazon device','speaker','orange');
+ if(/ipad|ipod/.test(h))return T(/ipod/.test(h)?'iPod':'Tablet','tablet','blue');
+ if(/_apple-mobdev|iphone|galaxy|s2\d|pixel|android/.test(sv+' '+h))return T('Phone','phone','green');
+ if(/macbook|laptop/.test(h))return T('Laptop','laptop','blue');
+ if(/imac|win-|desktop|server|raspberry/.test(h))return T('Computer','desktop','blue');
+ if(/_spotify-connect/.test(sv))return T('Speaker','speaker','orange');
+ if(/apple/.test(h))return T('Apple device','phone','green');
+ return T('Device','unknown','grey')}
+function avatar(d,cls=''){const k=kind(d);return`<span class="avw"><span class="av ${cls} c-${k.c}">${ic(k.icon)}</span><span class="pres ${d.online?'on':''}" title="${d.online?'Online':'Offline'}"></span></span>`}
+const statusChip=d=>d.online?'<span class="chip ok"><span class="dt"></span>Online</span>':'<span class="chip off"><span class="dt"></span>Offline</span>';
+
+/* routing */
+const NAMES={overview:'Overview',devices:'Devices',internet:'Internet',activity:'Activity',settings:'Settings'};
+function route(){
+ const h=(location.hash||'#overview').slice(1);
+ if(h.startsWith('device/')){view='device';const m=decodeURIComponent(h.slice(7));if(m!==devMac){devMac=m;DV=null;pingRes=null;devTab=null;PR=null}}
+ else{view=NAMES[h]?h:'overview';devMac=null;DV=null}
+ document.querySelectorAll('.view').forEach(e=>e.classList.toggle('on',e.id==='v-'+view));
+ const nav=view==='device'?'devices':view;
+ document.querySelectorAll('#nav a,.sfoot a').forEach(a=>a.classList.toggle('on',a.dataset.v===nav));
+ if(view==='device')addRecent(devMac);
+ title();window.scrollTo(0,0);app.classList.remove('open');
+ if(view==='device'){drawDev();loadDev()}else if(S)draw()
+ if(view==='activity')loadEvents();if(view==='settings')loadAlerts()}
+const SUBS={devices:'Everything connected to your home network. Select a device to see what the hub knows about it.',internet:'Your connection, checked every 10 seconds',activity:'Everything the hub has noticed, newest first · counts cover the last 7 days',settings:'Password, notifications and sign-out'};
+let OVSUM='Checking your network…';
+function greeting(){const hr=new Date().getHours();return hr<5?'Good night':hr<12?'Good morning':hr<18?'Good afternoon':'Good evening'}
+function title(){
+ const t=view==='device'?(DV&&!DV.error?label(DV):'Device'):NAMES[view];
+ document.title=t+' · Home Hub';
+ $('#phead').hidden=view==='overview'||view==='device';
+ $('#title').textContent=NAMES[view]||'';$('#psub').textContent=SUBS[view]||'';
+ $('#crumbs').innerHTML=`<a href="#overview">${ic('home')}</a>${ic('chev')}<b>${esc(NAMES[view]||'')}</b>`}
+function recents(){try{return JSON.parse(localStorage.getItem('recents')||'[]')}catch(e){return[]}}
+function addRecent(mac){if(!mac)return;try{const r=recents().filter(m=>m!==mac);r.unshift(mac);localStorage.setItem('recents',JSON.stringify(r.slice(0,5)))}catch(e){}}
+addEventListener('hashchange',route);
+addEventListener('scroll',()=>$('#bar').classList.toggle('scrolled',scrollY>4),{passive:true});
+
+/* theme */
+const root=document.documentElement;
+function setThemeIcon(){$('#themeIc').setAttribute('href',root.dataset.theme==='dark'?'#i-sun':'#i-moon')}
+if(!root.dataset.theme)root.dataset.theme='light';
+setThemeIcon();
+$('#theme').onclick=()=>{$('#profMenu').hidden=true;const n=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('theme',n)}catch(e){}setThemeIcon();draw();drawDev();supergraphics()};
+
+/* data */
+async function load(manual){try{S=await api('/api/state');draw();if(view==='device')loadDev();if(view==='activity'&&!EV.paged)loadEvents();if(manual)snack('Up to date')}catch(e){if(e.message!=='auth'){$('#status').className='tstat err';$('#status').innerHTML='<span class="dt"></span>Hub unreachable'}}}
+async function loadDev(){if(!devMac)return;try{DV=await api('/api/device?mac='+encodeURIComponent(devMac))}catch(e){DV={error:e.message}}title();drawDev();if(devTab==='presence'&&PR)loadPresence()}
+$('#refresh').onclick=()=>load(true);
+
+function statCard(t,v,d){return`<div class="card stat"><div class="t"><span>${t}</span></div><div class="v">${v}</div><div class="d">${d}</div></div>`}
+function delta(cur,prev,lowerBetter,neutral){
+ if(cur==null||prev==null||!prev)return'';
+ const p=(cur-prev)/prev*100;if(Math.abs(p)<0.05)return'<span class="delta">0%</span>';
+ const cls=neutral?'':(lowerBetter?p<0:p>0)?'good':'bad';
+ return`<span class="delta ${cls}" title="Compared with the 24 hours before">${ic(p>0?'up-right':'down-right')}${Math.abs(p).toFixed(1)}%</span>`}
+function typeSearch(n){$('#q').value=$('#hq').value=n;filter='all'}
+
+function evIcon(k){return{new:['plus','orange'],arrive:['home','green'],leave:['logout','grey'],online:['up','blue'],offline:['power','red'],ip:['swap','blue'],outage:['cloud-off','red'],restored:['check','green']}[k]||['history','grey']}
+function evList(evs,inDevice){
+ return evs.map(e=>{const[i,c]=evIcon(e.kind),link=e.mac&&!inDevice;
+  return`<li><${link?`a href="#device/${e.mac}"`:'div'} class="li"><span class="av c-${c}" style="width:36px;height:36px">${ic(i,'i s')}</span><span class="tx"><div class="p" style="font-size:14.5px;white-space:normal">${esc(e.msg)}</div><div class="s2">${fmt(e.ts)}</div></span><span class="end tm">${ago(e.ts)}</span></${link?'a':'div'}></li>`}).join('')
+  ||`<div class="empty">${ic('history')}Nothing has happened yet. Events will show up here as devices come and go.</div>`}
+
+function draw(){
+ if(!S)return;
+ const D=S.devices,net=S.internet,online=D.filter(d=>d.online),people=D.filter(d=>d.is_person),home=people.filter(d=>d.online),fresh=D.filter(d=>!d.known),down=D.filter(d=>d.watch&&!d.is_person&&!d.online);
+ const st=$('#status');st.className='tstat'+(net.up?'':' err');st.innerHTML=`<span class="dt"></span>${net.up?'Internet OK':'Internet down'}`;
+ const nn=$('#navNew');nn.hidden=!fresh.length;nn.textContent=fresh.length+' new';
+ const up=net.uptime24h,outs=net.outages.filter(o=>(o.end||S.now)>S.now-86400);
+
+ /* "Let's get to work" header */
+ const alertsOff=ALS&&!ALS.ntfy_url&&!ALS.tg_chat;
+ $('#hello').textContent=greeting()+'.';
+ $('#ovPill').innerHTML=alertsOff?`<a class="cta-pill" href="#settings">Get alerts on your phone ${ic('bell')}</a>`
+  :`<span class="cta-pill"><span class="dt"${net.up?'':' style="background:var(--err)"'}></span>${online.length} devices online · ${net.up?'internet '+(net.ms==null?'working':net.ms.toFixed(0)+' ms'):'internet down'}</span>`;
+ const rec=recents().map(m=>D.find(d=>d.mac===m)).filter(Boolean).slice(0,3);
+ $('#ovQuick').innerHTML=
+  `<div><div class="qh"><a href="#devices">Devices${ic('chev')}</a></div>`+
+  (fresh.length?`<a class="qtile" href="#devices" onclick="filter='new'">${ic('plus')}<span>Review <b>${fresh.length} new device${fresh.length>1?'s':''}</b></span></a>`:`<a class="qtile" href="#devices">${ic('check')}<span>All <b>${D.length}</b> devices approved</span></a>`)+`</div>`+
+  `<div><div class="qh"><a href="#devices" onclick="filter='tracked'">Who's home${ic('chev')}</a></div>`+
+  (people.length?`<a class="qtile" href="#devices" onclick="filter='tracked'">${ic('home')}<span><b>${home.length} of ${people.length}</b> home${home.length?' · '+esc(home.map(label).join(', ')):''}</span></a>`:`<a class="qtile" href="#devices">${ic('person')}Pick phones to track</a>`)+`</div>`+
+  `<div><div class="qh">Recents</div>`+
+  (rec.length?rec.map(d=>`<a class="qrec" href="#device/${d.mac}">${ic('history')}<span>Devices /</span><b>${esc(label(d))}</b><span class="x">${ic('chev')}</span></a>`).join(''):`<div class="qrec">${ic('history')}Devices you open show up here</div>`)+`</div>`;
+
+ /* banner: the most important thing that needs attention */
+ let bn=null;
+ if(!net.up)bn={cls:'err',t:'Your internet is down',d:'The hub is timing the outage. If it lasts more than a few minutes, try restarting the Verizon router.',b:['Details','#internet']};
+ else if(down.length)bn={cls:'err',t:down.length===1?`${label(down[0])} is offline`:`${down.length} watched devices are offline`,d:down.length===1?`Last seen ${ago(down[0].last_seen)}. You asked to be told when it drops off the network.`:down.map(label).join(', '),b:['Open','#device/'+down[0].mac]};
+ else if(fresh.length)bn={t:`${fresh.length===1?'A new device':fresh.length+' new devices'} joined your network`,d:`${fresh.slice(0,3).map(label).join(', ')}${fresh.length>3?' and more':''}. If you recognise ${fresh.length===1?'it':'them'}, approve ${fresh.length===1?'it':'them'} to stop this reminder.`,b:['Review','#devices'],f:1};
+ else if(alertsOff)bn={t:'Get alerts on your phone',d:'Hear about new devices, internet outages and watched devices going offline, through the free ntfy app or Telegram.',b:['Set up','#settings']};
+ $('#ovBanner').innerHTML=bn?`<div class="frame banner"><div class="inner"><div class="art ${bn.cls||''}"></div><div class="txt"><b>${esc(bn.t)}</b><span>${esc(bn.d)}</span></div><div class="go"><a class="btn ct" href="${bn.b[1]}"${bn.f?` onclick="filter='new'"`:''}>${bn.b[0]}</a></div></div></div>`:'';
+
+ /* analytics */
+ const os=S.online_series||[],prevN=os.length>48?os[os.length-49].n:null;
+ $('#ovBig').innerHTML=
+  `<a class="card metric" href="#internet"><div class="mh"><span>Internet response time</span><span class="cap">24 h average</span></div><div class="mvrow"><span class="mv">${net.avg_ms==null?'—':net.avg_ms.toFixed(1)+' ms'}</span>${delta(net.avg_ms,net.avg_prev,true)}</div><div class="mchart" id="mcNet"></div></a>`+
+  `<a class="card metric" href="#devices"><div class="mh"><span>Devices online</span><span class="cap">right now</span></div><div class="mvrow"><span class="mv">${online.length}</span>${delta(online.length,prevN,false,true)}</div><div class="mchart" id="mcDev"></div></a>`;
+ const longest=outs.reduce((a,o)=>Math.max(a,(o.end||S.now)-o.start),0);
+ $('#ovSmall').innerHTML=
+  statCard('Reliability',up==null?'—':up.toFixed(2)+'%',delta(up,net.uptime_prev,false)||'of checks, last 24 h')+
+  statCard('Outages',outs.length,outs.length?'longest '+dur(longest):'none in the last 24 h')+
+  statCard('People home',people.length?`${home.length} / ${people.length}`:'—',people.length?'tracked phones':'<a href="#devices">pick phones to track</a>')+
+  statCard('New devices',S.new_24h??0,`joined in 24 h ${delta(S.new_24h,S.new_prev,true,true)}`);
+ const types={};D.forEach(d=>{const n=kind(d).name;types[n]=(types[n]||0)+1});
+ const tl=Object.entries(types).sort((a,b)=>b[1]-a[1]).slice(0,7),tmax=tl.length?tl[0][1]:1;
+ $('#ovTypes').innerHTML=tl.map(([n,c])=>`<div class="trow"><a href="#devices" data-type="${esc(n)}" onclick="typeSearch(this.dataset.type)">${esc(n)}</a><div class="tbar"><i style="width:${(c/tmax*100).toFixed(1)}%"></i></div><span>${c}</span></div>`).join('');
+
+ $('#people').innerHTML=people.length?people.map(d=>`<li><a class="li" href="#device/${d.mac}">${avatar(d)}<span class="tx"><div class="p">${esc(label(d))}</div><div class="s2">${d.online?'Connected now':'Last seen '+ago(d.last_seen)}</div></span><span class="end">${d.online?'<span class="chip ok">Home</span>':'<span class="chip off">Away</span>'}</span></a></li>`).join(''):
+  `<div class="empty">${ic('person')}No one is being tracked yet.<br><a href="#devices">Open a phone</a> and turn on “Who's home”.</div>`;
+ const recent=[...D].sort((a,b)=>(b.online-a.online)||(b.first_seen-a.first_seen)).slice(0,6);
+ $('#recentDev').innerHTML=recent.map(d=>`<li><a class="li" href="#device/${d.mac}">${avatar(d)}<span class="tx"><div class="p">${esc(label(d))}</div><div class="s2">${esc(kind(d).name)} · ${esc(d.ip)}</div></span><span class="end">${d.known?'':'<span class="chip warn">New</span>'}${ic('chev','i chev')}</span></a></li>`).join('');
+ $('#evOv').innerHTML=evList(S.events.slice(0,6));
+
+ /* internet */
+ $('#netAlert').innerHTML=net.up?`<div class="alert ok">${ic('check')}<div class="m"><b>Your internet is working.</b> The hub checks it every 10 seconds.</div></div>`:`<div class="alert err">${ic('cloud-off')}<div class="m"><b>Your internet is down right now.</b> Try restarting the Verizon router if it lasts more than a few minutes.</div></div>`;
+ $('#netStats').innerHTML=
+  statCard('Status',net.up?'Working':'Down',net.up?'connected to the internet':'no response')+
+  statCard('Response time',net.ms==null?'—':net.ms.toFixed(0)+' ms','right now')+
+  statCard('Average today',net.avg_ms==null?'—':net.avg_ms.toFixed(1)+' ms',delta(net.avg_ms,net.avg_prev,true)||'under 50 ms is great')+
+  statCard('Reliability',up==null?'—':up.toFixed(2)+'%',delta(up,net.uptime_prev,false)||'of checks succeeded today');
+ $('#outBody').innerHTML=net.outages.length?net.outages.map(o=>`<tr><td>${fmt(o.start)}<div class="cap">${ago(o.start)}</div></td><td>${o.end?dur(o.end-o.start):'still going'}</td><td>${o.end?'<span class="chip ok">Back online</span>':'<span class="chip err">Ongoing</span>'}</td></tr>`).join(''):
+  `<tr><td colspan="3"><div class="empty">${ic('check')}No outages in the last 7 days. Nice.</div></td></tr>`;
+ if(view==='overview'){
+  lineChart($('#mcNet'),net.series.map(p=>({t:p.t+300,v:p.ms,loss:p.loss})),{H:170,t0:S.now-86400,t1:S.now,unit:' ms',drops:true});
+  lineChart($('#mcDev'),os.slice(-48).map(p=>({t:p.t+900,v:p.n})),{H:170,t0:S.now-86400,t1:S.now,unit:' online',int:true})}
+ if(view==='internet')lineChart($('#chartNet'),net.series.map(p=>({t:p.t+300,v:p.ms,loss:p.loss})),{H:280,t0:S.now-86400,t1:S.now,unit:' ms',drops:true,xlabels:true});
+
+ /* devices */
+ const watched=D.filter(d=>d.watch);
+ const cnt={all:D.length,online:online.length,offline:D.length-online.length,new:fresh.length,tracked:people.length,watched:watched.length};
+ const FL={all:'All',online:'Online',offline:'Offline',new:'New',watched:'Watched',tracked:'Who\'s home'};
+ $('#filters').innerHTML=Object.keys(FL).filter(f=>cnt[f]||f==='all'||f===filter).map(f=>`<button class="chip ${filter===f?'sel':''}" onclick="setFilter('${f}')">${FL[f]} <span class="n">${cnt[f]}</span></button>`).join('')
+  +(filter==='new'&&fresh.length>1?`<button class="btn tx sm" onclick="approveAll()">${ic('check')}Approve all ${fresh.length}</button>`:'');
+ const q=$('#q').value.trim().toLowerCase();
+ const rows=D.filter(d=>({all:1,online:d.online,offline:!d.online,new:!d.known,tracked:d.is_person,watched:d.watch}[filter]))
+  .filter(d=>!q||[label(d),d.ip,d.mac,d.vendor,d.hostname,d.model,kind(d).name,d.owner,d.location].join(' ').toLowerCase().includes(q))
+  .sort((a,b)=>(b.online-a.online)||(+a.ip.split('.')[3]-+b.ip.split('.')[3]));
+ $('#devBody').innerHTML=rows.length?rows.map(d=>`<tr class="click" onclick="location.hash='#device/${d.mac}'">
+  <td><div class="cell">${avatar(d)}<div style="min-width:0"><div class="p">${esc(label(d))}</div><div class="s2">${esc(kind(d).name)}${d.ident&&d.ident.confidence==='low'&&d.ident.type!=='Unknown'?' (best guess)':''}${(()=>{const x=d.ident||{},mm=[x.maker,x.model].filter(Boolean).join(' ');return mm&&mm!==label(d)?' · '+esc(mm):''})()}${d.location||d.owner?' · '+esc([d.location,d.owner].filter(Boolean).join(', ')):''}</div></div></div></td>
+  <td><div class="chips">${statusChip(d)}${d.known?'':'<span class="chip warn">New</span>'}${d.watch&&!d.is_person?`<span title="You get an alert when it goes offline" class="mut">${ic('eye','i s')}</span>`:''}</div></td>
+  <td class="mono hide-s">${esc(d.ip)}</td><td class="hide-s">${esc((d.ident&&d.ident.maker)||shortVendor(d.vendor)||'Unknown')}</td><td class="hide-s mut">${d.online?'Now':ago(d.last_seen)}</td>
+  <td>${ic('chev','i chev')}</td></tr>`).join(''):
+  `<tr><td colspan="6"><div class="empty">${ic('search')}No devices match.</div></td></tr>`;
+ $('#devFoot').textContent=`${rows.length} of ${D.length} devices`;
+}
+function setFilter(f){filter=f;draw()}
+async function approveAll(){const n=S.devices.filter(d=>!d.known).length;
+ if(!await confirmBox(`Approve ${n} devices?`,'They\'ll be marked as yours and stop showing as new. You can still rename or forget any of them later.','Approve all'))return;
+ await api('/api/approve_all',{});snack('All devices approved');filter='all';load()}
+$('#q').oninput=draw;
+
+/* ---------- device detail ---------- */
+const SVC={'_ipp._tcp':'Printing','_ipps._tcp':'Secure printing','_printer._tcp':'Printing (LPD)','_pdl-datastream._tcp':'Printing (raw)',
+ '_uscan._tcp':'Scanning','_uscans._tcp':'Secure scanning','_cdm._tcp':'HP cloud management','_spotify-connect._tcp':'Spotify Connect',
+ '_amzn-wplay._tcp':'Fire TV casting','_matter._tcp':'Matter smart home','_matterc._udp':'Matter setup','_matterd._udp':'Matter discovery',
+ '_googlecast._tcp':'Google Cast','_airplay._tcp':'AirPlay','_raop._tcp':'AirPlay audio','_apple-mobdev2._tcp':'Apple device sync','_apple-mobdev._tcp':'Apple device sync',
+ '_remotepairing._tcp':'Apple remote pairing','_companion-link._tcp':'Apple companion link','_hap._tcp':'HomeKit','_dosvc._tcp':'Windows updates sharing',
+ '_http._tcp':'Web page','_https._tcp':'Secure web page','_ssh._tcp':'Remote login (SSH)','_sftp-ssh._tcp':'File transfer (SFTP)','_smb._tcp':'Shared files','_afpovertcp._tcp':'Shared files (Mac)',
+ '_workstation._tcp':'Computer','_device-info._tcp':'Device info','_occam._udp':'Amazon device control','_sleep-proxy._udp':'Bonjour sleep proxy','_rfb._tcp':'Screen sharing'};
+
+function drawDev(){
+ if(view!=='device')return;
+ const el=$('#dev');
+ if(!DV){el.innerHTML='<div class="card"><div class="linprog"></div><div class="empty">Loading device…</div></div>';return}
+ if(DV.error){el.innerHTML=`<div class="card"><div class="empty">${ic('unknown')}This device isn't in the list any more.<br><br><a class="btn ol" href="#devices">Back to devices</a></div></div>`;return}
+ const d=DV,info=d.info||{},md=info.mdns||{},u=info.upnp||{},txt=md.txt||{},k=kind(d);
+ if(devTab===null||(devTab==='presence'&&!d.is_person))devTab=d.is_person?'presence':'overview';
+ const sess=d.sessions||[],since=Math.max(sess.length?sess[0].start:d.first_seen,d.now-7*86400);
+ const onTime=sess.reduce((a,x)=>a+Math.max(0,Math.min(x.end,d.now)-Math.max(x.start,since)),0),avail=Math.min(100,onTime/Math.max(1,d.now-since)*100);
+ const nPorts=d.ports?d.ports.length:null,nSvc=Object.keys(md.services||{}).length+(u.deviceType?1:0);
+
+ const head=`<div class="dh">
+  <div class="crumbs"><a href="#overview">${ic('home')}</a>${ic('chev')}<a href="#devices">Devices</a>${ic('chev')}<b>${esc(label(d))}</b></div>
+  <div class="top2">${avatar(d,'lg')}<div class="tx"><h1>${esc(label(d))}</h1>
+   <div class="meta">${statusChip(d)}${d.known?'':'<span class="chip warn">New</span>'}${d.is_person?'<span class="chip pri">Who\'s home</span>':''}${d.watch&&!d.is_person?'<span class="chip pri">Watched</span>':''}<span>${esc(k.name)}${d.vendor?' by '+esc(shortVendor(d.vendor)):''} · <span class="mono">${esc(d.ip)}</span></span></div></div></div>
+  <div class="acts">
+   ${d.known?'':`<button class="btn ct" onclick="approve()">${ic('check')}Approve</button>`}
+   <button class="btn ${d.known?'ct':'ol'}" onclick="edit()">${ic('edit')}Edit</button>
+   <button class="btn ol" onclick="doPing()" ${pingRes&&pingRes.loading?'disabled':''} title="Check if the device responds and how fast">${pingRes&&pingRes.loading?'<span class="spin"></span>Pinging…':ic('speed')+'Ping'}</button>
+   <button class="btn ol" onclick="doScan()" ${d.scanning?'disabled':''} title="Fingerprint it now: open ports, services and operating system">${d.scanning?'<span class="spin"></span>Scanning…':ic('shield')+(d.scan_ts?'Re-identify':'Identify now')}</button>
+   ${d.is_person?'':`<button class="btn ol" onclick="toggleWatch()" title="Get a notification when it goes offline or comes back">${ic(d.watch?'eye':'bell')}${d.watch?'Stop watching':'Watch'}</button>`}
+   ${/Computer|Laptop/.test(k.name)?`<button class="btn ol" onclick="doWake()" title="Send a Wake-on-LAN signal to turn it on">${ic('power')}Wake up</button>`:''}
+   <span style="flex:1"></span>
+   <button class="btn ol er" onclick="forget()">${ic('delete')}Forget</button>
+  </div>
+  ${d.scanning?'<div class="linprog" style="margin-top:14px"></div>':''}
+  ${pingRes&&!pingRes.loading?`<div style="margin-top:14px">${pingRes.error?`<div class="alert err" style="margin:0">${ic('error')}<div class="m">${esc(pingRes.error)}</div></div>`:
+    pingRes.avg!=null?`<div class="alert ok" style="margin:0">${ic('check')}<div class="m"><b>It responded ${pingRes.received} out of ${pingRes.sent} times</b>, in ${pingRes.avg.toFixed(0)} ms on average. ${pingRes.avg<20?'That\'s a strong connection.':pingRes.avg<100?'That\'s normal for Wi-Fi.':'That\'s a bit slow; it may be far from the router.'}</div></div>`:
+    `<div class="alert warn" style="margin:0">${ic('warn')}<div class="m"><b>No response.</b> The device may be asleep or set to ignore pings. That's normal for many phones.</div></div>`}</div>`:''}
+  <div class="tabs">${[...(d.is_person?[['presence','Home & away']]:[]),['overview','Overview'],['ports','Ports'+(nPorts!=null?` (${nPorts})`:'')],['services','Services'+(nSvc?` (${nSvc})`:'')],['history','History']].map(([t,n])=>`<button class="${devTab===t?'on':''}" onclick="devTab='${t}';drawDev()">${n}</button>`).join('')}</div>
+ </div>`;
+
+ let body='';
+ if(devTab==='presence'){
+  body=presenceTab(d);
+ } else if(devTab==='overview'){
+  const idn=d.ident||{},CONF={high:['ok','Confident'],medium:['pri','Fairly sure'],low:['warn','Best guess'],set:['out','Set by you']}[idn.confidence]||['off',''];
+  const row=(kk,v,hint)=>v==null||v===''?'':`<div><dt${hint?` title="${esc(hint)}"`:''}>${kk}</dt><dd>${v}</dd></div>`;
+  const kvs=[
+   row('Name',esc(label(d))),
+   row('Type',esc(k.name)),
+   row('Owner',esc(d.owner||'')),
+   row('Location',esc(d.location||'')),
+   row('Made by',esc(idn.maker||(d.shared_mac?'Unknown (connected through the Wi-Fi extender)':d.private_mac?'Hidden (private address)':'Unknown'))),
+   row('Model',esc(idn.model||'')),
+   row('Operating system',esc(idn.os||'')),
+   row('Real MAC',idn.real_mac?`<span class="mono">${esc(idn.real_mac)}</span> <span class="cap">(from its Wi-Fi join request)</span>`:''),
+   row('IP address',`<span class="mono">${esc(d.ip)}</span>`,'Its address on your home network. It can change over time.'),
+   row('MAC address',d.shared_mac?`<span class="mono">${esc(d.mac.split('@')[0])}</span> <span class="chip out" title="The Netgear extender shows its own address for every device connected through it, so the real one is hidden">Via Wi-Fi extender</span>`:`<span class="mono">${esc(d.mac)}</span>${d.private_mac?' <span class="chip out" title="Phones often use a random address for privacy">Private</span>':''}`,'Its permanent hardware ID'),
+   row('Calls itself',esc(d.dname)),
+   row('Network name',esc(d.hostname||md.hostname)),
+   row('Windows name',esc(info.nbname?info.nbname+(info.workgroup?' ('+info.workgroup+')':''):'')),
+   row('Join name',esc((info.dhcp||{}).hostname&&(info.dhcp||{}).hostname!==d.hostname?info.dhcp.hostname:'')),
+   row('First seen',`${fmt(d.first_seen)} <span class="mut">· ${ago(d.first_seen)}</span>`),
+   row('Last seen',d.online?'Right now':`${fmt(d.last_seen)} <span class="mut">· ${ago(d.last_seen)}</span>`),
+  ].filter(Boolean);
+  let tl='';const day0=new Date();day0.setHours(0,0,0,0);
+  for(let i=6;i>=0;i--){const s0=day0.getTime()/1000-i*86400,s1=s0+86400;
+   const segs=sess.filter(x=>x.end>s0&&x.start<s1).map(x=>{const a=Math.max(x.start,s0),b=Math.min(Math.max(x.end,x.start+60),s1);
+    return`<i style="left:${((a-s0)/864).toFixed(2)}%;width:${Math.max(.2,(b-a)/864).toFixed(2)}%" title="Online ${new Date(a*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})} – ${new Date(b*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}"></i>`}).join('');
+   tl+=`<div class="r"><span>${i===0?'Today':new Date(s0*1000).toLocaleDateString([], {weekday:'short'})}</span><div class="bar2">${segs}</div></div>`}
+  const nf=document.activeElement&&document.activeElement.id==='notes'?document.activeElement.value:null;
+  const SRC={'UPnP':'Device description','Bonjour':'Bonjour / mDNS','DHCP':'Wi-Fi join request','OS scan':'OS fingerprint','Port scan':'Port scan','Name':'Device name','MAC vendor':'Hardware maker','Ping':'Network replies'};
+  const ev=(idn.evidence||[]).slice(0,8);
+  const idCard=`<div class="card mt"><div class="card-h"><div class="av c-${k.c}">${ic(k.icon)}</div><div style="flex:1;min-width:0"><div class="h6">${esc(idn.type==='Unknown'?'Not identified yet':idn.type)}${idn.maker||idn.model?` <span class="mut" style="font-weight:400">· ${esc([idn.maker,idn.model].filter(Boolean).join(' '))}</span>`:''}</div>
+    <div class="cap">${idn.os?'Runs '+esc(idn.os)+' · ':''}${d.scan_ts?'Fingerprinted '+ago(d.scan_ts):d.scanning?'Fingerprinting now…':'Not fingerprinted yet'}</div></div>
+    <span class="chip ${CONF[0]}">${CONF[1]}</span><button class="btn tx sm" onclick="edit(true)">${idn.confidence==='set'?'Change':'Not right?'}</button></div>
+   ${ev.length?`<div class="card-b" style="padding-top:0"><div class="cap" style="margin-bottom:6px;font-weight:500">How we know</div>${ev.map(e=>`<div style="display:flex;gap:10px;align-items:baseline;padding:5px 0;border-top:1px solid var(--div)"><span class="chip out" style="height:22px;font-size:11.5px;flex:none">${esc(SRC[e.source]||e.source)}</span><span style="flex:1">${esc(e.reason)}</span><span class="cap" style="flex:none">${e.type===idn.type?'':'→ '+esc(e.type)}</span></div>`).join('')}
+    ${idn.alternatives&&idn.alternatives.length&&idn.confidence!=='high'&&idn.confidence!=='set'?`<div class="cap" style="margin-top:8px">Could also be: ${idn.alternatives.map(esc).join(', ')}</div>`:''}</div>`
+   :`<div class="empty" style="padding-top:0">No clues yet. ${d.scan_ts?'This device is very quiet on the network.':'The hub will fingerprint it shortly.'} You can set the type yourself with “Not right?”.</div>`}</div>`;
+  body=idCard+(!d.is_person&&k.name==='Phone'?`<div class="alert ok mt" style="margin-bottom:0;background:var(--pri-l)">${ic('home')}<div class="m"><b>Want to see when this person comes and goes?</b> Turn on “Who's home” and the hub will chart when they leave and get back.</div><button class="btn ol sm" onclick="edit()">Turn on</button></div>`:'')+`<div class="grid g21 mt">
+   <div class="card"><div class="card-h"><div class="h6">About this device</div></div><dl class="kv" style="margin:0;grid-template-columns:1fr">${kvs.join('')}</dl></div>
+   <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+    <div class="card"><div class="card-h"><div style="flex:1"><div class="h6">Online ${avail.toFixed(0)}% of the time</div><div class="cap">Over the last ${dur(d.now-since)}</div><div class="prog"><i style="width:${avail.toFixed(1)}%"></i></div></div></div>
+     <div class="tl">${tl}<div class="ax"><span></span><div><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div></div></div></div>
+    <div class="card"><div class="card-h"><div><div class="h6">Notes</div><div class="cap" id="noteSt">Saved automatically</div></div></div>
+     <div class="card-b" style="padding-top:0"><div class="tf" style="margin-top:0"><textarea id="notes" placeholder=" ">${esc(d.notes||'')}</textarea><label for="notes">Anything worth remembering</label></div></div></div>
+   </div></div>`;
+  setTimeout(()=>{const n=$('#notes');if(!n)return;if(nf!==null){n.value=nf;n.focus()}
+   n.onchange=async()=>{await api('/api/device',{mac:d.mac,notes:n.value});d.notes=n.value;$('#noteSt').textContent='Saved';snack('Notes saved')}});
+ } else if(devTab==='ports'){
+  let p;
+  if(d.scanning)p=`<div class="empty"><span class="spin" style="width:28px;height:28px;color:var(--pri);margin-bottom:12px"></span><br>Checking the 200 most common ports and identifying the software behind them.<br>This usually takes about a minute.</div>`;
+  else if(!d.ports)p=`<div class="empty">${ic('shield')}Not scanned yet.<br>A port scan shows which network services this device has open, like a web page, file sharing or printing.<br><br><button class="btn ct" onclick="doScan()">${ic('shield')}Scan ports</button></div>`;
+  else if(!d.ports.length)p=`<div class="empty">${ic('check')}No open ports found.<br>This device isn't accepting incoming connections, which is normal (and good) for phones and many smart devices.${d.scan_err?`<br><span style="color:var(--err)">${esc(d.scan_err)}</span>`:''}</div>`;
+  else p=`<div class="tw"><table><thead><tr><th>Port</th><th>What it is</th><th>Software</th><th>Web page</th></tr></thead><tbody>${d.ports.map(x=>{
+    const web=/http/.test(x.service||'')||[80,443,8080,8443].includes(x.port),url=`${/ssl|https/.test(x.service||'')||x.port===443||x.port===8443?'https':'http'}://${d.ip}:${x.port}/`;
+    const title=x.title&&!/^(Did not follow redirect|Site doesn't have a title)/.test(x.title)?x.title:'Open';
+    return`<tr><td class="mono">${x.port}</td><td>${esc(PORTN[x.port]||x.service||'Unknown')}</td><td class="mut">${esc(x.product||'—')}</td><td>${web?`<a href="${esc(url)}" target="_blank" rel="noopener">${esc(title)} ↗</a>`:'—'}</td></tr>`}).join('')}</tbody></table></div>`;
+  body=`<div class="card mt"><div class="card-h"><div><div class="h6">Open ports</div><div class="cap">${d.scan_ts&&!d.scanning?'Last checked '+ago(d.scan_ts):'Network services this device accepts connections on'}</div></div><span class="sp"></span>${d.ports&&!d.scanning?`<button class="btn tx sm" onclick="doScan()">Scan again</button>`:''}</div>${p}</div>`;
+ } else if(devTab==='services'){
+  const svc=Object.entries(md.services||{});
+  const rows=svc.map(([t,v])=>`<tr><td><b style="font-weight:500">${esc(SVC[t]||t.replace(/^_|\._(tcp|udp)$/g,''))}</b><div class="cap mono">${esc(t)}</div></td><td>${esc(v.name)}</td><td class="mono">${v.port||'—'}</td></tr>`);
+  if(u.deviceType)rows.push(`<tr><td><b style="font-weight:500">UPnP device</b><div class="cap mono">${esc(u.deviceType.replace(/^urn:schemas-upnp-org:device:/,''))}</div></td><td>${esc(u.friendlyName)}</td><td class="mono">—</td></tr>`);
+  const tx=Object.entries(txt);
+  body=`<div class="card mt"><div class="card-h"><div><div class="h6">What it announces</div><div class="cap">Features this device advertises to other devices on your network (Bonjour / mDNS and UPnP)</div></div></div>
+   ${rows.length?`<div class="tw"><table><thead><tr><th>Feature</th><th>Name</th><th>Port</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="empty">${ic('unknown')}This device doesn't announce anything. That's common for phones, cameras and smart plugs.</div>`}</div>
+   ${tx.length?`<div class="card mt"><div class="card-h"><div class="h6">Extra details it shares</div></div><dl class="kv" style="margin:0">${tx.map(([a,b])=>`<div><dt class="mono">${esc(a)}</dt><dd>${esc(b)}</dd></div>`).join('')}</dl></div>`:''}
+   ${u.server?`<div class="card mt"><div class="card-h"><div><div class="h6">Software</div><div class="cap mono" style="margin-top:4px">${esc(u.server)}</div></div></div></div>`:''}`;
+ } else {
+  body=`<div class="card mt"><ul class="list" style="padding-top:8px">${evList(d.events||[],true)}</ul></div>`;
+ }
+ el.innerHTML=head+body.replace(/^<div class="card mt"/,'<div class="card"').replace(/^<div class="grid g21 mt"/,'<div class="grid g21"');
+}
+
+/* ---------- home & away (presence) ---------- */
+const hm=t=>new Date(t*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+const hdur=s=>{s=Math.max(0,s);const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h?`${h}h ${m?m+'m':''}`.trim():`${Math.max(1,m)}m`};
+const dayStart=t=>{const x=new Date(t*1000);x.setHours(0,0,0,0);return x.getTime()/1000};
+const dayName=(s0,todayS)=>s0===todayS?'Today':s0===todayS-86400?'Yesterday':new Date(s0*1000).toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'});
+async function loadPresence(){if(!DV)return;const mac=DV.mac,days=PRdays;
+ try{const p=await api(`/api/presence?mac=${encodeURIComponent(mac)}&days=${days}`);if(DV&&DV.mac===mac&&days===PRdays){PR=p;PR.mac=mac;PR.days=days;drawDev()}}catch(e){}}
+function setPR(k,v){if(k==='days'){PRdays=v;PR=null}else PRshort=v;drawDev()}
+
+function presenceTab(d){
+ if(!PR||PR.mac!==d.mac||PR.days!==PRdays){setTimeout(loadPresence);return'<div class="card mt"><div class="linprog"></div><div class="empty">Loading home & away history…</div></div>'}
+ const p=PR,now=p.now,todayS=dayStart(now),MIN=20*60;
+ // phones drop off Wi-Fi for a while when idle; very short "trips" are usually that, not someone leaving
+ const trips=p.trips.filter(t=>PRshort||t.back===null||t.away>=MIN),hidden=p.trips.length-trips.length;
+ const stays=[];  // merge stays separated only by hidden short gaps
+ for(const s of p.stays){const l=stays[stays.length-1];if(l&&!PRshort&&s.start-l.end<MIN)l.end=Math.max(l.end,s.end);else stays.push({...s})}
+ const cur=p.home_now?stays[stays.length-1]:p.trips.find(t=>t.back===null);
+ const todayTrips=trips.filter(t=>t.left>=todayS||(t.back||now)>=todayS);
+ const firstLeft=todayTrips.filter(t=>t.left>=todayS).map(t=>t.left).sort((a,b)=>a-b)[0];
+ const lastBack=todayTrips.filter(t=>t.back&&t.back>=todayS).map(t=>t.back).sort((a,b)=>b-a)[0];
+ const awayToday=todayTrips.reduce((a,t)=>a+Math.min(t.back||now,now)-Math.max(t.left,todayS),0);
+ const weekTrips=trips.filter(t=>t.left>=now-7*86400).length;
+ const name=esc(label(d).replace(/'s (iPhone|Galaxy|Pixel|phone|Phone).*$/,'').replace(/ (iPhone|Galaxy|Pixel)\b.*$/,''));
+
+ const status=p.home_now
+  ?`<div class="alert ok mt" style="margin-bottom:0">${ic('home')}<div class="m"><b>Home</b> since ${hm(cur.start)}${cur.start<todayS?' '+dayName(dayStart(cur.start),todayS).toLowerCase():''} · ${hdur(now-cur.start)}</div></div>`
+  :`<div class="alert warn mt" style="margin-bottom:0">${ic('logout')}<div class="m"><b>Away</b> since ${cur?hm(cur.left)+(cur.left<todayS?' '+dayName(dayStart(cur.left),todayS).toLowerCase():'')+' · '+hdur(now-cur.left):'—'}</div></div>`;
+ const sc=statCard;
+ const stats=`<div class="statrow mt">
+  ${sc('Left today',firstLeft?hm(firstLeft):'—',firstLeft?'first time out':'hasn\'t left today','logout','orange')}
+  ${sc('Back today',lastBack?hm(lastBack):'—',lastBack?'most recent return':'no returns yet','home','blue')}
+  ${sc('Away today',hdur(awayToday),awayToday?'out of the house':'home all day','history','purple')}
+  ${sc('Trips · 7 days',weekTrips,weekTrips?'avg '+hdur(trips.filter(t=>t.left>=now-7*86400).reduce((a,t)=>a+t.away,0)/weekTrips)+' each':'none recorded','swap','teal')}</div>`;
+
+ const range=`<div class="seg2">${[7,14,30].map(n=>`<button class="${PRdays===n?'on':''}" onclick="setPR('days',${n})">${n} days</button>`).join('')}</div>`;
+ const note=hidden?`<label class="cap" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:0 20px 14px"><input type="checkbox" ${PRshort?'checked':''} onchange="setPR('short',this.checked)">Show short drop-offs under 20 min (${hidden} hidden). Phones often leave Wi-Fi briefly while idle.</label>`:'';
+ const nd=p.tracked_from?Math.round((dayStart(p.now)-dayStart(p.tracked_from))/86400)+1:0;
+ const tracked=p.tracked_from?(nd<PRdays?`History started ${new Date(p.tracked_from*1000).toLocaleDateString([], {month:'short',day:'numeric'})}, more days appear as it builds up`:`Last ${PRdays} days`):'No data yet';
+
+ const rows=trips.slice(0,60).map(t=>`<tr><td>${dayName(dayStart(t.left),todayS)}<div class="cap">${hm(t.left)}</div></td><td>${t.back?dayName(dayStart(t.back),todayS)+'<div class="cap">'+hm(t.back)+'</div>':'<span class="chip warn">Still out</span>'}</td><td>${hdur(t.away)}</td></tr>`).join('');
+
+ setTimeout(()=>{drawTimeline(stays,trips,p);drawTimes(trips,p)});
+ return status+stats+`
+ <div class="card mt"><div class="card-h"><div><div class="h6">When ${name} was home</div><div class="cap">Each row is a day, midnight to midnight · ${tracked}</div></div><span class="sp"></span>${range}</div>
+  <div class="pchart" id="ptl"></div>
+  <div class="pkey"><span><svg width="18" height="10"><rect width="18" height="10" rx="3" fill="var(--home)"/></svg>Home</span><span><svg width="18" height="10"><rect width="18" height="10" rx="3" fill="var(--hover)" stroke="var(--div)"/></svg>Away</span><span><svg width="2" height="12"><rect width="2" height="12" fill="var(--err)"/></svg>Now</span></div>${note}</div>
+ <div class="card mt"><div class="card-h"><div><div class="h6">Leave and return times</div><div class="cap">Each dot is one trip out · tap a dot for details</div></div></div>
+  <div class="pchart" id="ptimes"></div>
+  <div class="pkey"><span><svg width="12" height="12"><circle cx="6" cy="6" r="4.5" fill="var(--paper)" stroke="var(--leave)" stroke-width="2"/></svg>Left home</span><span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--home)"/></svg>Came back</span></div></div>
+ <div class="card mt"><div class="card-h"><div><div class="h6">Trips</div><div class="cap">Newest first</div></div></div>
+  ${rows?`<div class="tw"><table><thead><tr><th>Left</th><th>Came back</th><th>Away for</th></tr></thead><tbody>${rows}</tbody></table></div>`:`<div class="empty">${ic('home')}No trips recorded yet. They'll appear here after ${name} leaves and comes back.</div>`}</div>`;
+}
+
+/* shared tap/hover tooltip for presence charts */
+function wireTips(el){
+ const tip=el.querySelector('.tip'),show=(ev)=>{const t=ev.target.closest&&ev.target.closest('[data-tip]');
+  if(!t){tip.style.display='none';return}
+  const r=el.getBoundingClientRect(),pt=ev.touches?ev.touches[0]:ev;
+  tip.innerHTML=t.getAttribute('data-tip');tip.style.display='block';
+  const x=Math.min(Math.max(pt.clientX-r.left,90),r.width-90);tip.style.left=x+'px';tip.style.top=(pt.clientY-r.top-12)+'px'};
+ el.onmousemove=show;el.ontouchstart=show;el.onmouseleave=()=>tip.style.display='none'}
+
+const prDays=p=>Math.max(1,Math.min(PRdays,p.tracked_from?Math.round((dayStart(p.now)-dayStart(p.tracked_from))/86400)+1:1));
+function drawTimeline(stays,trips,p){
+ const el=$('#ptl');if(!el)return;
+ const W=Math.max(320,el.clientWidth-32),L=W<500?72:96,R=6,RH=26,BH=16,n=prDays(p),todayS=dayStart(p.now),H=n*RH+26;
+ const css=getComputedStyle(root),c=v=>css.getPropertyValue(v).trim(),w=W-L-R,X=s=>L+s/86400*w;
+ let g='';
+ for(let hr=0;hr<=24;hr+=6){const x=X(hr*3600);g+=`<line x1="${x}" x2="${x}" y1="0" y2="${n*RH}" stroke="${c('--div')}" ${hr%24?'stroke-dasharray="3 3"':''}/><text x="${x}" y="${n*RH+17}" font-size="11" fill="${c('--mut')}" text-anchor="${hr===0?'start':hr===24?'end':'middle'}">${['12a','6a','12p','6p','12a'][hr/6]}</text>`}
+ for(let i=0;i<n;i++){
+  const s0=todayS-i*86400,s1=s0+86400,y=i*RH+(RH-BH)/2,lbl=dayName(s0,todayS);
+  g+=`<text x="${L-10}" y="${y+BH-3}" font-size="12" fill="${c('--mut')}" text-anchor="end">${esc(W<500?lbl.replace(/, \w+ \d+$/,''):lbl)}</text>`;
+  if(p.tracked_from&&s1<=p.tracked_from){g+=`<rect x="${L}" y="${y}" width="${w}" height="${BH}" rx="4" fill="none" stroke="${c('--div')}" stroke-dasharray="3 3"/><text x="${L+8}" y="${y+BH-4}" font-size="11" fill="${c('--dis')}">no data yet</text>`;continue}
+  const dayEnd=Math.min(s1,p.now),startData=Math.max(s0,p.tracked_from||s0);
+  // away track for the part of the day we have data for
+  g+=`<rect x="${X(startData-s0)}" y="${y}" width="${Math.max(0,X(dayEnd-s0)-X(startData-s0))}" height="${BH}" rx="4" fill="${c('--hover')}" stroke="${c('--div')}" stroke-width=".5"/>`;
+  for(const t of trips){const a=Math.max(t.left,s0),b=Math.min(t.back||p.now,dayEnd);if(b<=a)continue;
+   g+=`<rect x="${X(a-s0)}" y="${y}" width="${Math.max(3,X(b-s0)-X(a-s0))}" height="${BH}" fill="transparent" data-tip="<b>Away</b> ${hm(t.left)} – ${t.back?hm(t.back):'now'}<br>${hdur(t.away)}"/>`}
+  for(const s of stays){const a=Math.max(s.start,s0),b=Math.min(s.end,dayEnd);if(b<=a)continue;
+   const x1=X(a-s0)+1,x2=X(b-s0)-1;  // 2px surface gap between neighbouring fills
+   g+=`<rect x="${x1}" y="${y}" width="${Math.max(2,x2-x1)}" height="${BH}" rx="4" fill="${c('--home')}" data-tip="<b>Home</b> ${hm(s.start)} – ${s.end>=p.now-60?'now':hm(s.end)}<br>${hdur(s.end-s.start)}"/>`}
+  if(i===0){const x=X(p.now-s0);g+=`<rect x="${x-1}" y="${y-4}" width="2" height="${BH+8}" rx="1" fill="${c('--err')}"/>`}
+ }
+ el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Home and away timeline">${g}</svg><div class="tip"></div>`;
+ wireTips(el);
+}
+
+function drawTimes(trips,p){
+ const el=$('#ptimes');if(!el)return;
+ const n=Math.max(prDays(p),3),W=Math.max(320,el.clientWidth-32),H=240,L=40,R=10,T=8,B=26,w=W-L-R,h=H-T-B,todayS=dayStart(p.now),first=todayS-(n-1)*86400;
+ const css=getComputedStyle(root),c=v=>css.getPropertyValue(v).trim();
+ const X=t=>L+((dayStart(t)-first)/86400+.5)/n*w,Y=t=>T+(t-dayStart(t))/86400*h;
+ let g='';
+ for(let hr=0;hr<=24;hr+=6){const y=T+hr/24*h;g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="${c('--div')}" ${hr%24?'stroke-dasharray="3 3"':''}/><text x="${L-8}" y="${y+4}" font-size="11" fill="${c('--mut')}" text-anchor="end">${['12a','6a','12p','6p','12a'][hr/6]}</text>`}
+ const every=n<=7?1:n<=14?2:5;
+ for(let i=0;i<n;i+=every){const s0=first+i*86400,d=new Date(s0*1000);
+  g+=`<text x="${X(s0)}" y="${H-6}" font-size="11" fill="${c('--mut')}" text-anchor="middle">${s0===todayS?'Today':n<=7?d.toLocaleDateString([], {weekday:'short'}):(d.getMonth()+1)+'/'+d.getDate()}</text>`}
+ if(n>every&&(n-1)%every)g+=`<text x="${X(todayS)}" y="${H-6}" font-size="11" fill="${c('--mut')}" text-anchor="middle">Today</text>`;
+ const jit=k=>((k*37)%9-4)*1.5;  // small horizontal offset so dots on the same day don't stack exactly
+ let k=0;
+ for(const t of trips){
+  if(t.left>=first){const tipL=`<b>Left</b> ${dayName(dayStart(t.left),todayS)} ${hm(t.left)}<br>${t.back?'away '+hdur(t.away):'still out'}`;
+   g+=`<circle cx="${X(t.left)+jit(k)}" cy="${Y(t.left)}" r="5" fill="${c('--paper')}" stroke="${c('--leave')}" stroke-width="2.25" data-tip="${tipL}"/>`;
+   g+=`<circle cx="${X(t.left)+jit(k)}" cy="${Y(t.left)}" r="12" fill="transparent" data-tip="${tipL}"/>`}
+  if(t.back&&t.back>=first){const tipB=`<b>Came back</b> ${dayName(dayStart(t.back),todayS)} ${hm(t.back)}<br>after ${hdur(t.away)}`;
+   g+=`<circle cx="${X(t.back)+jit(k+3)}" cy="${Y(t.back)}" r="5.5" fill="${c('--home')}" stroke="${c('--paper')}" stroke-width="2" data-tip="${tipB}"/>`;
+   g+=`<circle cx="${X(t.back)+jit(k+3)}" cy="${Y(t.back)}" r="12" fill="transparent" data-tip="${tipB}"/>`}
+  k++}
+ if(!trips.length)g+=`<text x="${L+w/2}" y="${T+h/2}" font-size="13" fill="${c('--mut')}" text-anchor="middle">No trips in this period yet</text>`;
+ el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Times of leaving and returning home">${g}</svg><div class="tip"></div>`;
+ wireTips(el);
+}
+const PORTN={21:'File transfer (FTP)',22:'Remote login (SSH)',23:'Telnet',53:'DNS',80:'Web page',139:'Windows file sharing',443:'Secure web page',445:'Windows file sharing',515:'Printing (LPD)',548:'Mac file sharing',554:'Video stream (RTSP)',631:'Printing (IPP)',1900:'UPnP',3389:'Remote desktop',5000:'UPnP / web',5353:'Bonjour',7000:'AirPlay',8008:'Google Cast',8009:'Google Cast',8080:'Web page',8443:'Secure web page',9100:'Printing (raw)',62078:'iPhone sync'};
+async function toggleWatch(){const on=!DV.watch;await api('/api/device',{mac:DV.mac,watch:on?1:0});
+ snack(on?'Watching. You\'ll get an alert if it goes offline.':'Stopped watching');if(on&&ALS&&!ALS.ntfy_url&&!ALS.tg_chat)setTimeout(()=>snack('Set up notifications in Settings to get alerts on your phone','warn'),3900);loadDev();load()}
+async function approve(){await api('/api/device',{mac:DV.mac,known:1});snack('Device approved');load()}
+async function doScan(){devTab='ports';await api('/api/scan',{mac:DV.mac});snack('Port scan started. This takes about a minute.','info');loadDev()}
+async function doPing(){pingRes={loading:1};drawDev();try{pingRes=await api('/api/ping',{mac:DV.mac})}catch(e){pingRes={error:e.message}}drawDev()}
+async function doWake(){try{await api('/api/wake',{mac:DV.mac});snack('Wake-up signal sent. It should come online within a minute if it supports it.')}catch(e){snack(e.message,'err')}}
+async function forget(){if(!await confirmBox('Forget this device?','Its name, notes, history and scan results will be deleted. If it\'s still connected it will reappear as a new device.','Forget'))return;
+ await api('/api/forget',{mac:DV.mac});snack('Device forgotten');location.hash='#devices';load()}
+setInterval(()=>{if(view==='device'&&DV&&DV.scanning)loadDev()},4000);
+
+/* dialogs */
+function confirmBox(t,txt,ok){const c=$('#cdlg');$('#ctitle').textContent=t;$('#ctext').textContent=txt;$('#cok').textContent=ok;c.returnValue='';c.showModal();
+ return new Promise(r=>c.addEventListener('close',()=>r(c.returnValue==='yes'),{once:true}))}
+const dlg=$('#dlg');
+window.edit=(focusType)=>{const d=DV;$('#dsub').textContent=d.ip+' · '+d.mac;$('#dname').value=d.name||'';
+ const auto=d.ident&&d.ident.confidence!=='set'?d.ident.type:null;
+ $('#dtype').innerHTML=`<option value="">Automatic${auto?' ('+esc(auto)+')':''}</option>`+(d.types||[]).filter(t=>t!=='Unknown').map(t=>`<option ${d.type_override===t?'selected':''}>${esc(t)}</option>`).join('');
+ setTimeout(()=>{if(focusType===true)$('#dtype').focus()});
+ $('#dhelp').textContent=d.name?'':'Currently shown as “'+label({...d,name:null})+'”';$('#dperson').checked=!!d.is_person;
+ $('#downer').value=d.owner||'';$('#dloc').value=d.location||'';$('#dwatch').checked=!!d.watch;
+ const uniq=k=>[...new Set((S?S.devices:[]).map(x=>x[k]).filter(Boolean))].sort().map(v=>`<option value="${esc(v)}">`).join('');
+ $('#dwatchL').hidden=!!d.is_person;$('#owners').innerHTML=uniq('owner');$('#locs').innerHTML=uniq('location');dlg.showModal();$('#dname').focus()};
+$('#dcancel').onclick=()=>dlg.close();
+$('#dform').addEventListener('submit',async e=>{if(!e.submitter||e.submitter.value!=='ok')return;
+ await api('/api/device',{mac:DV.mac,name:$('#dname').value.trim()||null,is_person:$('#dperson').checked?1:0,known:1,owner:$('#downer').value.trim()||null,location:$('#dloc').value.trim()||null,watch:$('#dwatch').checked?1:0,type_override:$('#dtype').value||null});snack('Saved');load()});
+
+/* activity log */
+const EVG={all:'All',new:'New devices',devices:'Online / offline',people:'Home & away',internet:'Internet',ip:'IP changes'};
+let EV={group:'all',items:[],more:false,week:{}},evT;
+async function loadEvents(more){
+ const q=new URLSearchParams({limit:'60'});if(EV.group!=='all')q.set('group',EV.group);const t=$('#eq').value.trim();if(t)q.set('q',t);
+ if(more&&EV.items.length)q.set('before',EV.items[EV.items.length-1].id);
+ const key=q.toString();EV.key=key;
+ try{const r=await api('/api/events?'+key);if(EV.key!==key)return;EV.items=more?EV.items.concat(r.events):r.events;EV.more=r.more;EV.paged=!!more;EV.week=r.week;drawEvents()}catch(e){}}
+function drawEvents(){
+ const wk=EV.week,tot=Object.values(wk).reduce((a,b)=>a+b,0);
+ $('#evFilters').innerHTML=Object.keys(EVG).map(g=>`<button class="chip ${EV.group===g?'sel':''}" onclick="EV.group='${g}';EV.more=false;loadEvents()">${EVG[g]} <span class="n">${g==='all'?tot:wk[g]||0}</span></button>`).join('');
+ const todayS=dayStart(NOW());let html='',last=null;
+ for(const e of EV.items){const ds=dayStart(e.ts);if(ds!==last){html+=`<li class="dayh">${esc(dayName(ds,todayS))}</li>`;last=ds}html+=evList([e])}
+ $('#evAll').innerHTML=html||`<div class="empty">${ic('history')}${$('#eq').value||EV.group!=='all'?'Nothing matches.':'Nothing has happened yet. Events will show up here as devices come and go.'}</div>`;
+ $('#evMore').hidden=!EV.more}
+$('#eq').oninput=()=>{clearTimeout(evT);evT=setTimeout(()=>{EV.more=false;loadEvents()},250)};
+
+/* notifications */
+const ALK={new:['New devices','When something unfamiliar joins your network'],watch:['Watched devices','When a device you watch goes offline or comes back'],
+ internet:['Internet outages','When the connection drops and when it’s back'],people:['Arrivals & departures','When people in “Who’s home” come and go'],ip:['IP address changes','Mostly useful for troubleshooting']};
+let ALS=null;
+async function loadAlerts(){try{ALS=await api('/api/alerts');drawAlerts();draw()}catch(e){}}
+function drawAlerts(){const a=ALS;if(!a)return;
+ $('#alNtfy').value=a.ntfy_url;$('#alTgChat').value=a.tg_chat;$('#alNtfyTok').value='';$('#alTgTok').value='';
+ $('#alNtfyTokH').textContent=a.ntfy_token_set?'Saved. Leave blank to keep it, or type - to remove it':'Only needed for a protected topic';
+ $('#alTgTokH').textContent=a.tg_token_set?`Saved (${a.tg_token_hint}). Leave blank to keep it, or type - to remove it`:'From @BotFather';
+ $('#alKinds').innerHTML=Object.entries(ALK).map(([k,[n,h]])=>`<label class="sw" style="margin-top:10px"><input type="checkbox" data-k="${k}" ${a.kinds[k]?'checked':''}><span class="tr"></span><span>${n}<small>${h}</small></span></label>`).join('');
+ $('#alGrace').innerHTML=[2,3,5,10,15,30,60].map(m=>`<option value="${m}" ${a.watch_after_min==m?'selected':''}>${m} minutes</option>`).join('');
+ $('#alDigest').innerHTML=`<option value="off">Off</option>`+[...Array(24).keys()].map(h=>`<option value="${h}" ${a.digest_hour===h?'selected':''}>Every day at ${new Date(2000,0,1,h).toLocaleTimeString([], {hour:'numeric'})}</option>`).join('')}
+function alBody(){const k={};document.querySelectorAll('#alKinds input').forEach(i=>k[i.dataset.k]=i.checked);
+ return{ntfy_url:$('#alNtfy').value.trim(),ntfy_token:$('#alNtfyTok').value,tg_token:$('#alTgTok').value,tg_chat:$('#alTgChat').value.trim(),kinds:k,watch_after_min:+$('#alGrace').value,digest_hour:$('#alDigest').value}}
+$('#alForm').onsubmit=async e=>{e.preventDefault();try{ALS=await api('/api/alerts',alBody());document.activeElement.blur();drawAlerts();draw();snack('Notification settings saved')}catch(err){snack(err.message,'err')}};
+$('#alTest').onclick=async()=>{const b=$('#alTest');b.disabled=true;
+ try{ALS=await api('/api/alerts',alBody());drawAlerts();await api('/api/alerts/test',{});snack('Test sent. Check your phone.')}catch(err){snack(err.message,'err')}b.disabled=false};
+$('#alGen').onclick=e=>{e.preventDefault();const r=[...crypto.getRandomValues(new Uint8Array(9))].map(x=>'abcdefghijkmnpqrstuvwxyz23456789'[x%32]).join('');$('#alNtfy').value='https://ntfy.sh/homehub-'+r;$('#alNtfy').focus()};
+
+/* settings */
+$('#pwForm').onsubmit=async e=>{e.preventDefault();
+ if($('#pwNew').value!==$('#pwNew2').value){snack('The new passwords don\'t match','err');return}
+ try{await api('/api/password',{current:$('#pwCur').value,new:$('#pwNew').value});snack('Password updated');e.target.reset()}
+ catch(err){snack(err.message,'err')}};
+
+/* Cloudflare-style line chart: thin blue line, soft fill, y labels on the right */
+function lineChart(el,pts,o){
+ if(!el)return;
+ const cs=getComputedStyle(el),W=Math.max(260,el.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)),H=o.H;
+ const css=getComputedStyle(root),c=v=>css.getPropertyValue(v).trim();
+ const vals=pts.map(p=>p.v).filter(v=>v!=null);
+ if(vals.length<2){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}"></svg><span class="nodata">No data yet</span>`;return}
+ const P={l:2,r:30,t:8,b:o.xlabels?24:6},w=W-P.l-P.r,h=H-P.t-P.b,t0=o.t0,t1=o.t1;
+ const top=Math.max(...vals)*1.15,mx=o.int?Math.max(4,Math.ceil(top/4)*4):Math.max(20,Math.ceil(top/20)*20);
+ const X=t=>P.l+(t-t0)/(t1-t0)*w,Y=v=>P.t+h-v/mx*h,col=c('--chart');
+ let g='';
+ for(let i=0;i<=4;i++){const v=mx*i/4,y=Y(v).toFixed(1);g+=`<line x1="${P.l}" x2="${P.l+w}" y1="${y}" y2="${y}" stroke="${c('--border-s')}"/><text x="${W-2}" y="${+y+4}" text-anchor="end" font-size="11" fill="${c('--sub')}">${Math.round(v)}</text>`}
+ if(o.xlabels)for(let i=0;i<=4;i++){const t=t0+(t1-t0)*i/4;g+=`<text x="${X(t).toFixed(1)}" y="${H-6}" text-anchor="${i==0?'start':i==4?'end':'middle'}" font-size="11" fill="${c('--sub')}">${new Date(t*1000).toLocaleTimeString([], {hour:'numeric'})}</text>`}
+ if(o.drops){const bw=Math.max(3,600/(t1-t0)*w);pts.filter(p=>p.loss>0.2).forEach(p=>g+=`<rect x="${X(p.t-300).toFixed(1)}" y="${P.t}" width="${bw}" height="${h}" fill="${c('--err')}" opacity=".12"/><rect x="${X(p.t-300).toFixed(1)}" y="${P.t+h-3}" width="${bw}" height="3" fill="${c('--err')}"/>`)}
+ // line and soft fill, broken wherever there's no data
+ let seg=[];const segs=[];pts.forEach(p=>{if(p.v==null){if(seg.length)segs.push(seg);seg=[]}else seg.push(p)});if(seg.length)segs.push(seg);
+ for(const s of segs){const d=s.map((p,i)=>`${i?'L':'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join('');
+  if(s.length>1)g+=`<path d="${d}L${X(s[s.length-1].t).toFixed(1)},${P.t+h}L${X(s[0].t).toFixed(1)},${P.t+h}Z" fill="${c('--chart-f')}"/>`;
+  g+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`}
+ g+=`<line class="hl" y1="${P.t}" y2="${P.t+h}" stroke="${c('--line')}" style="display:none"/><circle class="hc" r="3.5" fill="${col}" stroke="${c('--surface')}" stroke-width="2" style="display:none"/>`;
+ el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}</svg><div class="tip"></div>`;
+ const svg=el.querySelector('svg'),tip=el.querySelector('.tip'),hl=el.querySelector('.hl'),hc=el.querySelector('.hc');
+ const hide=()=>{tip.style.display=hl.style.display=hc.style.display='none'};
+ svg.onmousemove=svg.ontouchmove=svg.ontouchstart=ev=>{const r=svg.getBoundingClientRect(),cx=((ev.touches?ev.touches[0].clientX:ev.clientX)-r.left)*W/r.width;
+  const t=t0+(cx-P.l)/w*(t1-t0);let best=null;for(const p of pts)if(!best||Math.abs(p.t-t)<Math.abs(best.t-t))best=p;
+  if(!best||cx<P.l||cx>P.l+w)return hide();
+  const x=X(best.t);hl.setAttribute('x1',x);hl.setAttribute('x2',x);hl.style.display='';
+  if(best.v!=null){hc.setAttribute('cx',x);hc.setAttribute('cy',Y(best.v));hc.style.display=''}else hc.style.display='none';
+  tip.style.display='block';tip.style.left=Math.min(Math.max(x*r.width/W,70),r.width-70)+'px';tip.style.top='6px';tip.style.transform='translateX(-50%)';
+  tip.innerHTML=`${new Date(best.t*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}<br><b>${best.v==null?'No data':(o.int?best.v:best.v.toFixed(0))+(o.unit||'')}</b>${best.loss>0.05?` · ${(best.loss*100).toFixed(0)}% dropped`:''}`};
+ svg.onmouseleave=hide;
+}
+function chart(sel,H){
+ const el=$(sel),W=Math.max(300,el.clientWidth-32||600),ser=S.internet.series;
+ if(ser.length<2){el.innerHTML=`<div class="empty">${ic('history')}Collecting data. The chart fills in over the first hour.</div>`;return}
+ const P={l:36,r:6,t:10,b:24},w=W-P.l-P.r,h=H-P.t-P.b,t1=S.now,t0=t1-86400;
+ const vals=ser.map(p=>p.ms).filter(v=>v!=null),mx=Math.max(40,Math.ceil(Math.max(...vals,0)*1.15/10)*10);
+ const X=t=>P.l+(t-t0)/86400*w,Y=v=>P.t+h-v/mx*h;
+ const css=getComputedStyle(root),c=n=>css.getPropertyValue(n).trim();
+ let g=`<defs><linearGradient id="gf${sel.slice(1)}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c('--chart')}" stop-opacity=".3"/><stop offset="1" stop-color="${c('--chart')}" stop-opacity="0"/></linearGradient></defs>`;
+ for(let i=0;i<=4;i++){const v=mx*i/4,y=Y(v);g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${y}" y2="${y}" stroke="${c('--div')}" ${i?'stroke-dasharray="3 3"':''}/><text x="${P.l-8}" y="${y+4}" text-anchor="end" font-size="11" fill="${c('--mut')}">${Math.round(v)}</text>`}
+ for(let i=0;i<=4;i++){const t=t0+86400*i/4;g+=`<text x="${X(t)}" y="${H-6}" text-anchor="${i==0?'start':i==4?'end':'middle'}" font-size="11" fill="${c('--mut')}">${new Date(t*1000).toLocaleTimeString([], {hour:'numeric'})}</text>`}
+ const bw=Math.max(3,600/86400*w);
+ ser.filter(p=>p.loss>0.2).forEach(p=>g+=`<rect x="${X(p.t)}" y="${P.t}" width="${bw}" height="${h}" fill="${c('--err')}" opacity=".18"/><rect x="${X(p.t)}" y="${P.t+h-4}" width="${bw}" height="4" fill="${c('--err')}"/>`);
+ const pts=ser.filter(p=>p.ms!=null);
+ if(pts.length){const line=pts.map((p,i)=>`${i?'L':'M'}${X(p.t+300).toFixed(1)},${Y(p.ms).toFixed(1)}`).join('');
+  g+=`<path d="${line}L${X(pts[pts.length-1].t+300).toFixed(1)},${P.t+h}L${X(pts[0].t+300).toFixed(1)},${P.t+h}Z" fill="url(#gf${sel.slice(1)})"/><path d="${line}" fill="none" stroke="${c('--chart')}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`}
+ g+=`<line class="hl" y1="${P.t}" y2="${P.t+h}" stroke="${c('--mut')}" stroke-dasharray="3 3" style="display:none"/><circle class="hc" r="4" fill="${c('--chart')}" stroke="${c('--paper')}" stroke-width="2" style="display:none"/>`;
+ el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}</svg><div class="tip"></div>`;
+ const svg=el.querySelector('svg'),tip=el.querySelector('.tip'),hl=el.querySelector('.hl'),hc=el.querySelector('.hc');
+ const hide=()=>{tip.style.display=hl.style.display=hc.style.display='none'};
+ svg.onmousemove=svg.ontouchmove=svg.ontouchstart=ev=>{const r=svg.getBoundingClientRect(),cx=((ev.touches?ev.touches[0].clientX:ev.clientX)-r.left)*W/r.width;
+  const t=t0+(cx-P.l)/w*86400;let best=null;for(const p of ser)if(!best||Math.abs(p.t+300-t)<Math.abs(best.t+300-t))best=p;
+  if(!best||cx<P.l)return hide();
+  const x=X(best.t+300);hl.setAttribute('x1',x);hl.setAttribute('x2',x);hl.style.display='';
+  if(best.ms!=null){hc.setAttribute('cx',x);hc.setAttribute('cy',Y(best.ms));hc.style.display=''}else hc.style.display='none';
+  tip.style.display='block';tip.style.left=(x*r.width/W+16)+'px';tip.style.top='18px';
+  tip.innerHTML=`${new Date((best.t+300)*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}<br><b>${best.ms==null?'No connection':best.ms.toFixed(0)+' ms'}</b>${best.loss>0.05?` · ${(best.loss*100).toFixed(0)}% dropped`:''}`};
+ svg.onmouseleave=hide;
+}
+/* supergraphics: a sweep of concentric stripes (top-right), a hatched globe (bottom-left), a halftone field and a double rule.
+   Drawn once per size and theme; kept quieter than on the wall display because this page has more text on the canvas. */
+let sgKey='';
+function supergraphics(){
+ const el=$('#sg'),W=el.clientWidth,H=el.clientHeight,dark=root.dataset.theme==='dark',key=W+'x'+H+dark;
+ if(!W||!H||key===sgKey)return;sgKey=key;
+ const o=dark?0.45:0.6,c1='#f6821f',c2='#fbad41',c3=dark?'#7a3a0a':'#fdd3a6',c4=dark?'#4a2306':'#feeedd',R=Math.min(W,H),f=n=>n.toFixed(0);
+ const cx=W*0.14,cy=H*1.05,gr=H*0.7;
+ let g=`<defs><pattern id="sgh" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(-55)"><rect width="1.6" height="7" fill="${c1}"/></pattern>
+  <pattern id="sgd" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.6" fill="${c1}"/></pattern>
+  <clipPath id="sgc"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(gr)}"/></clipPath></defs>`;
+ [[.30,c1],[.37,c2],[.44,c3],[.51,c4]].forEach(([k,col])=>{const r=R*k;
+  g+=`<path d="M${f(W+10)},${f(r)} A${f(r)},${f(r)} 0 0 1 ${f(W-r)},-10" fill="none" stroke="${col}" stroke-width="${f(R*0.06)}" opacity="${(o*0.85).toFixed(2)}"/>`});
+ g+=`<g opacity="${(o*0.5).toFixed(2)}"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(gr)}" fill="url(#sgh)"/><g clip-path="url(#sgc)" fill="none" stroke="${c1}" stroke-width="1.5">`;
+ for(let i=1;i<=4;i++)g+=`<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(gr*i/5)}" ry="${f(gr)}"/><ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(gr)}" ry="${f(gr*i/5)}"/>`;
+ g+=`</g><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(gr)}" fill="none" stroke="${c1}" stroke-width="2"/></g>`;
+ g+=`<rect x="${f(W*0.62)}" y="${f(H*0.55)}" width="${f(W*0.34)}" height="${f(H*0.4)}" fill="url(#sgd)" opacity="${(o*0.4).toFixed(2)}"/>`;
+ g+=`<path d="M0,${f(H*0.35)} L${W},${f(H*0.85)}" stroke="${c2}" stroke-width="3" opacity="${(o*0.6).toFixed(2)}"/><path d="M0,${f(H*0.35+12)} L${W},${f(H*0.85+12)}" stroke="${c2}" stroke-width="1" opacity="${(o*0.6).toFixed(2)}"/>`;
+ el.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{draw();supergraphics()},150)});
+
+$('#host').textContent=location.hostname;
+const app=$('#app');
+try{if(localStorage.getItem('mini')==='1')app.classList.add('mini')}catch(e){}
+$('#collapse').onclick=()=>{const m=app.classList.toggle('mini');try{localStorage.setItem('mini',m?'1':'0')}catch(e){}setTimeout(()=>{draw();supergraphics()},230)};
+$('#menuBtn').onclick=()=>app.classList.toggle('open');
+$('#scrim').onclick=()=>app.classList.remove('open');
+$('#profBtn').onclick=e=>{e.stopPropagation();const m=$('#profMenu');m.hidden=!m.hidden};
+document.addEventListener('click',e=>{if(!e.target.closest('#profMenu'))$('#profMenu').hidden=true});
+$('#profMenu').addEventListener('click',e=>{if(e.target.closest('a'))$('#profMenu').hidden=true});
+$('#hq').oninput=()=>{$('#q').value=$('#hq').value;if(view!=='devices')location.hash='#devices';else draw()};
+$('#q').addEventListener('input',()=>{$('#hq').value=$('#q').value});
+$('#bigq').oninput=()=>{const v=$('#bigq').value;$('#q').value=$('#hq').value=v;$('#bigq').value='';location.hash='#devices';
+ setTimeout(()=>{const q=$('#q');q.focus();q.setSelectionRange(v.length,v.length)},30)};
+addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();const t=view==='overview'?$('#bigq'):innerWidth>900?$('#hq'):$('#q');if(t)t.focus()}});
+route();load();setInterval(load,15000);loadAlerts();supergraphics();
+</script>
+</body></html>
