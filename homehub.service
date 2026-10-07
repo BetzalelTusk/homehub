@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 User=betzaleltusk
 WorkingDirectory=/home/betzaleltusk/homehub
+UMask=0077
 ExecStart=/usr/bin/python3 /home/betzaleltusk/homehub/hub.py
 Restart=always
 RestartSec=5

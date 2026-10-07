@@ -1736,7 +1736,9 @@ def g_read_others(hub_cal):
     tmax = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now + 242 * 86400))
     events, infos = [], []
     for cal in cals:
-        color = cal.get("backgroundColor") or "#039be5"
+        color = cal.get("backgroundColor") or ""
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):   # it ends up in a style attribute
+            color = "#039be5"
         if cal["id"] == hub_cal:
             gcal["hub_color"] = color
             continue
@@ -1953,6 +1955,8 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")   # links out to Brightspace/Google don't reveal the hub's address
         for k, v in headers:
             self.send_header(k, v)
         self.end_headers(); self.wfile.write(b)
@@ -1964,8 +1968,23 @@ class H(BaseHTTPRequestHandler):
         self.renew = ok and int(m.group(1).split(".")[0]) < time.time() + (COOKIE_DAYS - 1) * 86400
         return ok
 
+    def via_proxy(self):
+        """True when the request came through `tailscale serve` (HTTPS on the tailnet name) rather than straight to :8080."""
+        return self.client_address[0] in ("127.0.0.1", "::1") and self.headers.get("Host", "").split(":")[0].endswith(".ts.net")
+
+    def client_ip(self):
+        # Behind tailscale serve every request arrives from 127.0.0.1; the proxy appends the real
+        # tailnet address to X-Forwarded-For, so the last entry is the one it vouches for.
+        if self.via_proxy():
+            fwd = self.headers.get("X-Forwarded-For", "").split(",")[-1].strip()
+            if fwd:
+                return fwd
+        return self.client_address[0]
+
     def cookie(self):
-        return ("Set-Cookie", f"hub={make_token()}; Path=/; Max-Age={COOKIE_DAYS*86400}; HttpOnly; SameSite=Strict")
+        # Secure only on the HTTPS address: the wall display still signs in over plain HTTP on the LAN.
+        return ("Set-Cookie", f"hub={make_token()}; Path=/; Max-Age={COOKIE_DAYS*86400}; HttpOnly; SameSite=Strict"
+                + ("; Secure" if self.via_proxy() else ""))
 
     def body(self):
         n = int(self.headers.get("Content-Length", 0) or 0)
@@ -2051,7 +2070,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
-        ip = self.client_address[0]
+        ip = self.client_ip()
         if u.path == "/login":
             n, last = failures.get(ip, (0, 0))
             if n >= 5 and time.time() - last < 60:
@@ -2059,8 +2078,7 @@ class H(BaseHTTPRequestHandler):
             pw = parse_qs(self.body().decode(errors="ignore")).get("password", [""])[0]
             if check_password(pw):
                 failures.pop(ip, None)
-                return self.send(303, "", "text/plain", [("Location", "/"),
-                    ("Set-Cookie", f"hub={make_token()}; Path=/; Max-Age={COOKIE_DAYS*86400}; HttpOnly; SameSite=Strict")])
+                return self.send(303, "", "text/plain", [("Location", "/"), self.cookie()])
             failures[ip] = (n + 1 if time.time() - last < 600 else 1, time.time())
             time.sleep(1)
             return self.login_page("Wrong password.", 401)
@@ -2097,8 +2115,7 @@ class H(BaseHTTPRequestHandler):
                 if len(d.get("new", "")) < 8:
                     return self.send(400, '{"error":"Use at least 8 characters."}')
                 set_password(d["new"])
-                return self.send(200, "{}", headers=[("Set-Cookie",
-                    f"hub={make_token()}; Path=/; Max-Age={COOKIE_DAYS*86400}; HttpOnly; SameSite=Strict")])
+                return self.send(200, "{}", headers=[self.cookie()])
             if u.path == "/api/alerts":
                 save_alerts(d)
                 return self.send(200, json.dumps(api_alerts()))

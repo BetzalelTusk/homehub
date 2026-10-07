@@ -1041,6 +1041,7 @@ const scHm=t=>{const d=new Date(t);return pad2(d.getHours())+':'+pad2(d.getMinut
 const scLocal=s=>{const[y,m,d]=String(s).slice(0,10).split('-').map(Number);return new Date(y,m-1,d).getTime()};
 const scFg=hex=>{const n=parseInt(String(hex).slice(1),16);if(isNaN(n))return'#fff';const r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255;return .2126*r+.7152*g+.0722*b>.6?'#1f1f1f':'#fff'};
 const scCol=c=>'cal-c'+(Math.max(0,scCourses.indexOf(c))%6);
+const scHex=c=>/^#[0-9a-f]{6}$/i.test(c||'')?c:'#7986cb';
 const scPlain=s=>String(s||'').replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ');
 async function loadSchool(){try{[SC,CAL]=await Promise.all([api('/api/school'),api('/api/calendar')])}catch(e){return}drawSchool()}
 
@@ -1049,15 +1050,16 @@ function scItems(){const now=Date.now(),out=[];
   out.push({...i,src:'bs',key:'bs:'+i.course,cal:i.course,t,end:t,allDay:d.getHours()===0&&d.getMinutes()===0,past:t<now,cls:scCol(i.course),sty:''})}
  for(const e of CAL&&CAL.events||[]){const allDay=!!e.allDay,t=allDay?scLocal(e.start):Date.parse(e.start),end=allDay?scLocal(e.end):Date.parse(e.end);
   if(isNaN(t)||isNaN(end))continue;
-  out.push({...e,key:e.src+':'+e.cal,t,end,allDay,past:end<now,cls:'',sty:`--ev:${e.color};--ev-fg:${e.fg}`})}
+  const color=scHex(e.color);   // lands in a style attribute
+  out.push({...e,key:e.src+':'+e.cal,t,end,allDay,past:end<now,cls:'',sty:`--ev:${color};--ev-fg:${scFg(color)}`})}
  return out.sort((a,b)=>a.t-b.t).map((i,k)=>({...i,k,day:scDay(i.t)}))}
 const scVis=()=>SCI.filter(i=>!scHide.has(i.key));
 // all-day events from Google/the hub can span days (end is exclusive); everything else sits on its start day
 const scOn=day=>scVis().filter(i=>i.allDay&&i.src!=='bs'?day>=i.day&&day<Math.max(i.end,scAdd(i.day,1)):i.day===day)
  .sort((a,b)=>(b.allDay-a.allDay)||(a.t-b.t));
-function scLegend(){const g=CAL&&CAL.google||{},hc=g.hub_color||'#7986cb',L=scCourses.map(c=>({key:'bs:'+c,name:c,cls:scCol(c),sty:''}));
+function scLegend(){const g=CAL&&CAL.google||{},hc=scHex(g.hub_color),L=scCourses.map(c=>({key:'bs:'+c,name:c,cls:scCol(c),sty:''}));
  L.push({key:'hub:Home Hub',name:'Home Hub',cls:'',sty:`--ev:${hc};--ev-fg:${scFg(hc)}`});
- for(const c of g.calendars||[])L.push({key:'google:'+c.name,name:c.name,cls:'',sty:`--ev:${c.color};--ev-fg:${c.fg}`});
+ for(const c of g.calendars||[]){const cc=scHex(c.color);L.push({key:'google:'+c.name,name:c.name,cls:'',sty:`--ev:${cc};--ev-fg:${scFg(cc)}`})}
  return L}
 
 function scGo(n){scClose();const a=scAnchor||scDay(Date.now());
@@ -1186,7 +1188,7 @@ function scNew(e,o){let t,end,allDay=!!o.allDay;
  if(allDay){t=o.day!=null?o.day:scDay(Date.now());end=scAdd(t,1)}
  else{const d=new Date(o.day!=null?o.day:Date.now());if(o.day==null||o.day===scDay(Date.now()))d.setHours(new Date().getHours()+1,0,0,0);else d.setHours(9,0,0,0);t=d.getTime();end=t+36e5}
  scEditor(e,{id:'',title:'',notes:'',allDay,t,end})}
-function scEditor(e,ev,anchor=null){const g=CAL&&CAL.google||{},hc=g.hub_color||'#7986cb',ad=!!ev.allDay;
+function scEditor(e,ev,anchor=null){const g=CAL&&CAL.google||{},hc=scHex(g.hub_color),ad=!!ev.allDay;
  scPop(e,`<form id="edForm" autocomplete="off"><div class="pr"><span class="sq" style="--ev:${hc}"></span><input class="ed-title" id="edTitle" placeholder="Add title" maxlength="200" value="${esc(ev.title==='(No title)'?'':ev.title)}"></div>`+
   `<div class="pr">${ic('clock')}<div class="ed-when"><div class="ed-row"><input type="date" id="edD1" value="${scYmd(ev.t)}" required>`+
   `<span id="edTm" ${ad?'hidden':''}><input type="time" id="edS" value="${scHm(ev.t)}" step="900"> – <input type="time" id="edE" value="${scHm(ev.end)}" step="900"></span>`+
