@@ -152,6 +152,7 @@ kbd{font:500 11px/1 Inter,system-ui,sans-serif;color:var(--mut);border:1px solid
 .bigsearch input::placeholder{color:var(--mut)}
 .bigsearch kbd{margin-left:2px}
 .quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:26px;text-align:left}
+.quick>div{min-width:0}
 .qh{display:flex;align-items:center;gap:4px;height:22px;margin-bottom:8px;font-size:13px;color:var(--fg)}
 .qh a{color:var(--fg);display:flex;align-items:center;gap:4px}
 .qh .i{width:13px;height:13px;color:var(--sub)}
@@ -181,9 +182,24 @@ a.qtile:hover,button.qtile:hover{background:var(--tile-h);text-decoration:none}
 .range .i{color:var(--icon)}
 .icbtn{width:36px;height:36px;border-radius:6px;display:grid;place-items:center;color:var(--icon)}
 /* packet table */
-.pk td{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;padding:5px 12px;white-space:nowrap;border-bottom:1px solid var(--border-s)}
-.pk td.info{max-width:520px;overflow:hidden;text-overflow:ellipsis}
-.pk th{position:sticky;top:0;z-index:1;padding:8px 12px}
+.pkcard{position:relative}
+.pkwrap{max-height:min(60vh,600px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;border-top:1px solid var(--border);-webkit-overflow-scrolling:touch}
+.pk{table-layout:fixed;width:100%}
+.pk td{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;padding:5px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--border-s)}
+.pk th{position:sticky;top:0;z-index:1;padding:8px 12px;overflow:hidden;text-overflow:ellipsis}
+.pk tr.row{cursor:pointer}
+.pk tr.row:hover td{background:var(--hover)}
+.pk tr.sel td{background:var(--info-l)}
+.pk .empty{font-family:Inter,system-ui,sans-serif;white-space:normal}
+.pk tr.det td{white-space:normal;overflow:visible;background:var(--canvas);padding:10px 16px 14px;font-family:inherit}
+.pkdet{display:grid;grid-template-columns:96px minmax(0,1fr);gap:5px 14px;margin:0;font-size:13px}
+.pkdet dt{color:var(--mut)}
+.pkdet dd{margin:0;overflow-wrap:anywhere;color:var(--head)}
+.pkdet dd.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+.newpill{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:3;height:32px;padding:0 14px;border-radius:16px;background:var(--head);color:var(--surface);font-size:12.5px;font-weight:500;box-shadow:var(--sh-pop);display:flex;align-items:center;gap:6px}
+.llm-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.llm-ta{display:block;width:100%;height:min(46vh,420px);font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--canvas);color:var(--fg);resize:vertical;white-space:pre-wrap;overflow-x:hidden;overscroll-behavior:contain}
+.llm-ta:focus{outline:0;border-color:var(--cf);box-shadow:0 0 0 2px var(--cf-l)}
 .pk .chip{height:19px;padding:0 6px;border-radius:4px;font-size:11.5px}
 .ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* range picker */
@@ -471,6 +487,9 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
  .snack{left:12px;right:12px;bottom:12px;min-width:0}
  .menu{right:8px;left:8px;width:auto}
  .trow{grid-template-columns:minmax(0,1fr) 30% 30px}
+ .pk .c-t,.pk .c-l,.pk .c-d{display:none}
+ .pk col.c-n{width:44px!important}.pk col.c-s{width:34%!important}.pk col.c-p{width:84px!important}
+ .pkdet{grid-template-columns:80px minmax(0,1fr)}
  .speedrow{grid-template-columns:1fr 1fr}.speedrow>div:nth-child(3){border-left:0}.speedrow>div:nth-child(n+3){border-top:1px solid var(--border-s)}
 }
 </style></head>
@@ -659,15 +678,17 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
               <div class="tf"><select class="fsel" id="capSecs"><option value="10">10 seconds</option><option value="30" selected>30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></select><label for="capSecs">For</label></div>
             </div>
           </div>
-          <div class="card-f"><button type="button" class="btn ol" id="capStop" hidden><svg class="i"><use href="#i-stop"/></svg>Stop</button><button class="btn ct" id="capStart"><svg class="i"><use href="#i-record"/></svg>Start capture</button></div>
+          <div class="card-f"><button type="button" class="btn ol" id="capLLM" hidden onclick="openLLM()"><svg class="i"><use href="#i-sparkles"/></svg>Copy for LLM</button><button type="button" class="btn ol" id="capStop" hidden><svg class="i"><use href="#i-stop"/></svg>Stop</button><button class="btn ct" id="capStart"><svg class="i"><use href="#i-record"/></svg>Start capture</button></div>
         </form>
         <div class="grid g11 mt">
           <div class="card"><div class="card-h"><div><div class="h6">Protocols</div><div class="cap">Packets by type in this capture</div></div></div><div id="capProtos" style="padding:4px 0 10px"></div></div>
           <div class="card"><div class="card-h"><div><div class="h6">Top talkers</div><div class="cap">Who sent the most packets</div></div></div><div id="capTalk" style="padding:4px 0 10px"></div></div>
         </div>
-        <div class="card mt">
+        <div class="card mt pkcard">
           <div class="tb"><label class="search"><svg class="i"><use href="#i-search"/></svg><input id="capQ" type="search" placeholder="Filter packets"></label><span style="flex:1"></span><span class="cap" id="capCount"></span></div>
-          <div class="tw" style="max-height:520px;overflow:auto;border-top:1px solid var(--border)" id="capWrap"><table class="pk"><thead><tr><th>No.</th><th>Time</th><th>Source</th><th>Destination</th><th>Protocol</th><th>Length</th><th>Info</th></tr></thead><tbody id="capBody"></tbody></table></div>
+          <div class="pkwrap" id="capWrap"><table class="pk"><colgroup><col class="c-n" style="width:58px"><col class="c-t" style="width:76px"><col class="c-s" style="width:20%"><col class="c-d" style="width:20%"><col class="c-p" style="width:104px"><col class="c-l" style="width:62px"><col></colgroup>
+            <thead><tr><th>No.</th><th class="c-t">Time</th><th>Source</th><th class="c-d">Destination</th><th>Protocol</th><th class="c-l">Length</th><th>Info</th></tr></thead><tbody id="capBody"></tbody></table></div>
+          <button type="button" class="newpill" id="capNew" hidden onclick="capJump()"></button>
         </div>
         <div class="card mt"><div class="card-h"><div><div class="h6">Saved captures</div><div class="cap">The newest 10 are kept on the Pi. Open them in Wireshark for every detail.</div></div></div><div class="tw"><table><thead><tr><th>When</th><th>What</th><th>Packets</th><th>Size</th><th></th></tr></thead><tbody id="capFiles"></tbody></table></div></div>
       </section>
@@ -737,6 +758,12 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 <dialog id="cdlg"><div class="dlg-h"><h3 id="ctitle"></h3><button type="button" class="tb-ic" onclick="this.closest('dialog').close()" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div><form method="dialog">
   <p id="ctext"></p>
   <div class="row"><button class="btn ol" value="no">Cancel</button><button class="btn ct" value="yes" id="cok"></button></div>
+</form></dialog>
+<dialog id="llmDlg" style="width:min(880px,calc(100vw - 32px))"><div class="dlg-h"><h3>Export for an LLM</h3><button type="button" class="tb-ic" onclick="llmDlg.close()" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div><form method="dialog" onsubmit="return false">
+  <div class="llm-bar"><div class="seg2" id="llmDetail"><button type="button" class="on" data-d="full">Full detail</button><button type="button" data-d="brief">Brief</button></div><span class="cap" id="llmInfo">Building…</span></div>
+  <p class="cap" style="margin:10px 0 8px">This is exactly what gets copied: a suggested question (edit it if you like), the devices involved, a summary and every packet. Paste it into Claude or another LLM.</p>
+  <textarea id="llmText" class="llm-ta" spellcheck="false"></textarea>
+  <div class="row"><a class="btn ol" id="llmDl" download><svg class="i"><use href="#i-download"/></svg>Download .txt</a><button type="button" class="btn ct" id="llmCopy"><svg class="i"><use href="#i-sparkles"/></svg>Copy to clipboard</button></div>
 </form></dialog>
 <div class="snack" id="snack"><svg class="i" id="snackIc"><use href="#i-check"/></svg><span id="snackTx"></span></div>
 <script>
@@ -830,7 +857,7 @@ setThemeIcon();
 $('#theme').onclick=()=>{$('#profMenu').hidden=true;const n=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('theme',n)}catch(e){}setThemeIcon();draw();drawDev();supergraphics()};
 
 /* data */
-async function load(manual){try{S=await api('/api/state');draw();if(view==='device')loadDev();if(view==='activity'&&!EV.paged)loadEvents();if(manual)snack('Up to date')}catch(e){if(e.message!=='auth'){$('#status').className='tstat err';$('#status').innerHTML='<span class="dt"></span>Hub unreachable'}}}
+async function load(manual){try{S=await api('/api/state');draw();if(view==='device')loadDev();if(view==='packets'&&!capNamed)drawCap(true);if(view==='activity'&&!EV.paged)loadEvents();if(manual)snack('Up to date')}catch(e){if(e.message!=='auth'){$('#status').className='tstat err';$('#status').innerHTML='<span class="dt"></span>Hub unreachable'}}}
 async function loadDev(){if(!devMac)return;try{DV=await api('/api/device?mac='+encodeURIComponent(devMac))}catch(e){DV={error:e.message}}title();drawDev();if(devTab==='presence'&&PR)loadPresence()}
 $('#refresh').onclick=()=>load(true);
 
@@ -1299,7 +1326,7 @@ function drawSpeed(){if(!SPD||!$('#spRow'))return;const l=SPD.last,h=H[RANGE];
 $('#spRun').onclick=async()=>{try{SPD=await api('/api/speed/run',{});drawSpeed();clearTimeout(spT);spT=setTimeout(loadSpeed,1500)}catch(e){snack(e.message,'err')}};
 $('#spEvery').onchange=async e=>{const v=+e.target.value;try{SPD=await api('/api/speed/settings',{every_h:v});drawSpeed();snack(v?`Speed test ${v===24?'once a day':'every '+v+(v>1?' hours':' hour')}`:'Automatic speed tests turned off')}catch(err){snack(err.message,'err')}};
 /* packet capture */
-let CAPS=null,capId=null,capSeq=0,capRows=[],capT,capErrShown=null;
+let CAPS=null,capId=null,capSeq=0,capRows=[],capT,capFollow=true,capShown=0,capSel=null,capNamed=false;   // capNamed: drawn with device names loaded
 const PCLS={DNS:'pri',mDNS:'pri',LLMNR:'pri',ARP:'warn',DHCP:'ok',SSDP:'out','WS-Discovery':'out',ICMP:'err',ICMPv6:'err',IGMP:'out'};
 const devByIp=ip=>S&&S.devices.find(d=>d.ip===ip);
 const hostName=ip=>{const d=devByIp(ip);return d?label(d):ip};
@@ -1316,29 +1343,61 @@ async function loadCap(){
 function bars(el,list,name){const mx=list.length?list[0][1]:1;
  el.innerHTML=list.length?list.map(([n,c])=>`<div class="trow"><span class="ell" title="${esc(n)}">${esc(name?name(n):n)}</span><div class="tbar"><i style="width:${(c/mx*100).toFixed(1)}%"></i></div><span>${c}</span></div>`).join('')
   :`<div class="empty">Start a capture to see this</div>`}
-function drawCap(){if(!CAPS||!$('#capBody'))return;const c=CAPS;
+function drawCap(force){if(!CAPS||!$('#capBody'))return;const c=CAPS;
  const left=c.running?Math.max(0,Math.round(c.ends-NOW())):0;
  $('#capStatus').innerHTML=c.running?`<span class="spin" style="color:var(--cf);vertical-align:-2px"></span>&nbsp; Capturing “${esc(c.label)}” · ${c.count} packets · ${left}s left`
   :c.error?`<span style="color:var(--err-t)">${esc(c.error)}</span>`:c.id?`Last capture: “${esc(c.label)}”, ${c.count} packets`:'Not capturing';
  $('#capStart').hidden=c.running;$('#capStop').hidden=!c.running;
  bars($('#capProtos'),c.protos);bars($('#capTalk'),c.talkers,hostName);
- const q=$('#capQ').value.trim().toLowerCase();
- const rows=capRows.filter(r=>!q||[r.src,r.dst,hostName(r.src),hostName(r.dst),r.proto,r.info].join(' ').toLowerCase().includes(q)).slice(-500);
- const wrap=$('#capWrap'),atEnd=wrap.scrollTop+wrap.clientHeight>=wrap.scrollHeight-30;
- $('#capBody').innerHTML=rows.length?rows.map(r=>`<tr><td class="mut">${r.n}</td><td class="mut">${(r.t-c.started).toFixed(3)}</td><td title="${esc(r.src)}">${esc(hostName(r.src))}</td><td title="${esc(r.dst)}">${esc(hostName(r.dst))}</td><td><span class="chip ${PCLS[r.proto]||'off'}">${esc(r.proto)}</span></td><td class="mut">${r.len??''}</td><td class="info" title="${esc(r.info)}">${esc(r.info)}</td></tr>`).join('')
-  :`<tr><td colspan="7"><div class="empty">${ic('packets')}${c.running?'Listening… packets show up here as they arrive.':'No packets yet. Start a capture above.'}</div></td></tr>`;
- if(atEnd)wrap.scrollTop=wrap.scrollHeight;
- $('#capCount').textContent=capRows.length?`${rows.length} of ${c.count} packets shown`:'';
+ $('#capLLM').hidden=c.running||!c.id||!c.files.some(f=>f.id===c.id);
+ const q=$('#capQ').value.trim().toLowerCase(),wrap=$('#capWrap');
+ // while you've scrolled up during a live capture, keep the list still and just count what's new
+ const frozen=c.running&&!capFollow&&capShown>0;
+ const last=capRows.length?capRows[capRows.length-1].n:0;
+ if(frozen&&!force){const nn=last-capShown;$('#capNew').hidden=nn<=0;$('#capNew').innerHTML=`${ic('down')}${nn} new packet${nn===1?'':'s'}`}
+ else{
+  const upto=frozen?capShown:Infinity;
+  const rows=capRows.filter(r=>r.n<=upto&&(!q||[r.src,r.dst,hostName(r.src),hostName(r.dst),r.proto,r.info].join(' ').toLowerCase().includes(q))).slice(-500);
+  const nm=ip=>{const n=hostName(ip);return n===ip?esc(ip):`${esc(n)} <span class="mut">${esc(ip)}</span>`};
+  $('#capBody').innerHTML=rows.length?rows.map(r=>`<tr class="row${capSel===r.n?' sel':''}" onclick="capToggle(${r.n})"><td class="mut">${r.n}</td><td class="mut c-t">${(r.t-c.started).toFixed(3)}</td><td title="${esc(r.src)}">${esc(hostName(r.src))}</td><td class="c-d" title="${esc(r.dst)}">${esc(hostName(r.dst))}</td><td><span class="chip ${PCLS[r.proto]||'off'}">${esc(r.proto)}</span></td><td class="mut c-l">${r.len??''}</td><td>${esc(r.info)}</td></tr>`+
+   (capSel===r.n?`<tr class="det"><td colspan="7"><dl class="pkdet"><dt>Time</dt><dd>${new Date(r.t*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})} · +${(r.t-c.started).toFixed(3)} s</dd>
+    <dt>Source</dt><dd>${r.src?nm(r.src):'—'}${r.sport!=null?` <span class="mut">port ${r.sport}</span>`:''}</dd><dt>Destination</dt><dd>${r.dst?nm(r.dst):'—'}${r.dport!=null?` <span class="mut">port ${r.dport}</span>`:''}</dd>
+    <dt>Protocol</dt><dd>${esc(r.proto)}${r.len!=null?` · ${r.len} bytes`:''}</dd><dt>Details</dt><dd class="m">${esc(r.info)}</dd></dl></td></tr>`:'')).join('')
+   :`<tr><td colspan="7"><div class="empty">${ic('packets')}${c.running?'Listening… packets show up here as they arrive.':'No packets yet. Start a capture above.'}</div></td></tr>`;
+  capShown=frozen?capShown:last;capNamed=!!S;
+  if(!frozen){$('#capNew').hidden=true;if(capFollow)wrap.scrollTop=wrap.scrollHeight}
+ }
+ $('#capCount').textContent=capRows.length?`${c.count} packet${c.count===1?'':'s'}${c.count>capRows.length?` · newest ${capRows.length} shown here, export for all`:''}`:'';
  $('#capFiles').innerHTML=c.files.length?c.files.map(f=>`<tr><td>${fmt(f.ts)}<div class="cap">${ago(f.ts)}</div></td><td>${esc(f.label)}${f.filter?`<div class="cap mono">${esc(f.filter)}</div>`:''}</td><td>${f.packets}</td><td class="mut">${(f.size/1024).toFixed(f.size<102400?1:0)} KB</td>
-  <td style="text-align:right;white-space:nowrap"><a class="btn tx sm" href="/api/capture/file?id=${esc(f.id)}" download>${ic('download')}.pcap</a><button class="btn tx sm" style="color:var(--err-t)" onclick="delCap('${esc(f.id)}')">${ic('delete')}</button></td></tr>`).join('')
+  <td style="text-align:right;white-space:nowrap"><button class="btn tx sm" onclick="openLLM('${esc(f.id)}')" title="Copy this capture as text for Claude or another LLM">${ic('sparkles')}For LLM</button><a class="btn tx sm" href="/api/capture/file?id=${esc(f.id)}" download>${ic('download')}.pcap</a><button class="btn tx sm" style="color:var(--err-t)" onclick="delCap('${esc(f.id)}')">${ic('delete')}</button></td></tr>`).join('')
   :`<tr><td colspan="5"><div class="empty">No saved captures yet.</div></td></tr>`}
+function capToggle(n){capSel=capSel===n?null:n;drawCap(true)}
+function capJump(){capFollow=true;capShown=0;drawCap(true);const w=$('#capWrap');w.scrollTop=w.scrollHeight}
+$('#capWrap').addEventListener('scroll',()=>{const w=$('#capWrap');capFollow=w.scrollTop+w.clientHeight>=w.scrollHeight-24;if(capFollow&&!$('#capNew').hidden)capJump()},{passive:true});
+
+/* export a capture as one paste-ready text for Claude or another LLM */
+const llmDlg=$('#llmDlg');let llmId=null,llmDetail='full';
+async function openLLM(id){llmId=id||(CAPS&&CAPS.id);if(!llmId)return;llmDetail='full';llmDlg.showModal();await fillLLM()}
+async function fillLLM(){document.querySelectorAll('#llmDetail button').forEach(b=>b.classList.toggle('on',b.dataset.d===llmDetail));
+ const ta=$('#llmText');ta.value='';$('#llmInfo').textContent='Building…';$('#llmCopy').disabled=true;
+ $('#llmDl').href=`/api/capture/llm?id=${encodeURIComponent(llmId)}&detail=${llmDetail}&dl=1`;
+ try{const r=await fetch(`/api/capture/llm?id=${encodeURIComponent(llmId)}&detail=${llmDetail}`);if(r.status===401){location.href='/login';return}
+  if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Could not build the export');
+  const t=await r.text(),tok=Math.round(t.length/4),n=(t.match(/^#\d+ /gm)||[]).length;ta.value=t;ta.scrollTop=0;
+  $('#llmInfo').innerHTML=`${n} packets · about ${tok>=1000?(tok/1000).toFixed(tok<10000?1:0)+'k':tok} tokens${tok>180000?' · <span style="color:var(--warn)">very long for one chat, try Brief or a shorter capture</span>':''}`;
+  $('#llmCopy').disabled=false}catch(e){$('#llmInfo').textContent=e.message}}
+document.querySelectorAll('#llmDetail button').forEach(b=>b.onclick=()=>{llmDetail=b.dataset.d;fillLLM()});
+$('#llmCopy').onclick=async()=>{const ta=$('#llmText');let ok=false;
+ if(navigator.clipboard&&window.isSecureContext){try{await navigator.clipboard.writeText(ta.value);ok=true}catch(e){}}
+ if(!ok){ta.focus();ta.select();try{ok=document.execCommand('copy')}catch(e){}ta.setSelectionRange(0,0);ta.scrollTop=0}   // plain-HTTP pages can't use the clipboard API
+ snack(ok?'Copied. Paste it into Claude or another LLM.':'Your browser blocked copying. Use Download .txt instead.',ok?'ok':'err');if(ok)llmDlg.close()};
 async function delCap(id){if(!await confirmBox('Delete this capture?','The saved .pcap file will be removed from the Pi.','Delete'))return;
  try{const r=await api('/api/capture/delete',{id});CAPS.files=r.files;drawCap()}catch(e){snack(e.message,'err')}}
 $('#capPreset').onchange=capPresetChange;
 $('#capQ').oninput=drawCap;
 $('#capForm').onsubmit=async e=>{e.preventDefault();
  try{const r=await api('/api/capture/start',{preset:$('#capPreset').value,ip:$('#capDev').value,filter:$('#capFilt').value,seconds:+$('#capSecs').value});
-  capId=r.id;capSeq=0;capRows=[];CAPS=r;drawCap();clearTimeout(capT);capT=setTimeout(loadCap,800)}catch(err){snack(err.message,'err')}};
+  capId=r.id;capSeq=0;capRows=[];capFollow=true;capShown=0;capSel=null;CAPS=r;drawCap(true);clearTimeout(capT);capT=setTimeout(loadCap,800)}catch(err){snack(err.message,'err')}};
 $('#capStop').onclick=async()=>{try{await api('/api/capture/stop',{})}catch(e){}setTimeout(loadCap,600)};
 /* supergraphics: a sweep of concentric stripes (top-right), a hatched globe (bottom-left), a halftone field and a double rule.
    Drawn once per size and theme; kept quieter than on the wall display because this page has more text on the canvas. */

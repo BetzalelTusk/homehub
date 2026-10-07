@@ -910,6 +910,121 @@ def stop_capture(cid=None):
         if CAP["running"] and CAP["proc"] and (cid is None or CAP["id"] == cid):
             CAP["proc"].terminate()
 
+WELL_KNOWN = {"224.0.0.251": "mDNS multicast", "ff02::fb": "mDNS multicast", "239.255.255.250": "SSDP multicast",
+              "ff02::c": "SSDP multicast", "255.255.255.255": "broadcast", "224.0.0.1": "all-hosts multicast", "ff02::1": "all-nodes multicast",
+              "224.0.0.22": "IGMP multicast", "ff02::16": "MLD multicast", "224.0.0.252": "LLMNR multicast", "ff02::1:3": "LLMNR multicast",
+              "1.1.1.1": "Cloudflare DNS", "1.0.0.1": "Cloudflare DNS", "8.8.8.8": "Google DNS", "8.8.4.4": "Google DNS"}
+LLM_PROMPT = """Below is a packet capture from my home network, taken by a Raspberry Pi network monitor. Please analyse it:
+explain what each device is doing, point out anything unusual, insecure or worth fixing (for example unencrypted
+traffic, unexpected devices or services, chatty or misconfigured devices), and finish with a short plain-English summary."""
+
+def _records(text):
+    """Group tcpdump output into one record per packet (decode lines after the first are indented)."""
+    recs = []
+    for line in text.splitlines():
+        if re.match(r"^\d+\.\d+ ", line):
+            recs.append([line])
+        elif recs and line.strip():
+            recs[-1].append(line.strip())
+    return recs
+
+def capture_llm_text(cid, detail="full"):
+    """A capture as one paste-ready text for an LLM: context, device map, summary, then every packet."""
+    pcap = os.path.join(CAPDIR, cid + ".pcap")
+    meta = json.load(open(os.path.join(CAPDIR, cid + ".json")))
+    run = lambda *a: subprocess.run(["tcpdump", "-r", pcap, "-n", "-tt", *a], capture_output=True, text=True, timeout=120).stdout
+    brief = _records(run())
+    rows = [parse_packet(r[0]) for r in brief]
+    full = _records(run("-e", "-vv")) if detail == "full" else None
+    if full is not None and len(full) != len(brief):
+        full = None
+    devs = api_state()["devices"]
+    by_ip = {d["ip"]: d for d in devs if d.get("ip")}
+    by_mac = {d["mac"].split("@")[0]: d for d in devs}
+    def dname(d):
+        idn = d.get("ident") or {}
+        typ = " ".join(x for x in [idn.get("maker"), (idn.get("type") or "").lower()] if x and x != "unknown")
+        return d.get("name") or d.get("auto_name") or d.get("dname") or (d.get("hostname") or "").replace(".local", "") or typ or d.get("ip")
+    # IPv6: the Pi's own addresses, and local ones (link-local or our /64) matched to devices by the MAC they came from
+    import ipaddress
+    v6 = subprocess.run(["ip", "-o", "-6", "addr", "show", "dev", "wlan0"], capture_output=True, text=True).stdout
+    mine6 = re.findall(r"inet6 ([0-9a-f:]+)/", v6)
+    prefixes = {ipaddress.ip_address(a).exploded[:19] for a in mine6 if not a.startswith("fe80")}
+    pi = next((d for d in devs if d.get("ip") == local_ip()), None)
+    if pi:
+        by_ip.update({a: pi for a in mine6})
+    if full:
+        for r, rec in zip(rows, full):
+            m = re.match(r"^\d+\.\d+ (\S+) > (\S+),", rec[0])
+            if not (r and m):
+                continue
+            for ip, mac in ((r["src"], m.group(1)), (r["dst"], m.group(2))):
+                if ip and ":" in ip and ip not in by_ip and mac in by_mac and mac not in EXTENDERS:
+                    try:
+                        local = ip.startswith("fe80") or ipaddress.ip_address(ip).exploded[:19] in prefixes
+                    except ValueError:
+                        local = False
+                    if local:
+                        by_ip[ip] = by_mac[mac]
+    def nm(ip):
+        if not ip:
+            return "?"
+        if ip in by_ip:
+            return f"{dname(by_ip[ip])} ({ip})" if dname(by_ip[ip]) != ip else ip
+        return f"{WELL_KNOWN[ip]} ({ip})" if ip in WELL_KNOWN else ip
+    t0 = rows[0]["t"] if rows and rows[0] else meta["ts"]
+    me = local_ip()
+    seen_ips = {a for r in rows if r for a in (r["src"], r["dst"]) if a}
+    seen_macs = set(re.findall(r"\b([0-9a-f]{2}(?::[0-9a-f]{2}){5})\b", "\n".join(" ".join(r) for r in full))) if full else set()
+    shown = [d for d in devs if d.get("ip") in seen_ips or d["mac"].split("@")[0] in seen_macs]
+    protos, talkers, convs = collections.Counter(), collections.Counter(), {}
+    for r in rows:
+        if not r:
+            continue
+        protos[r["proto"]] += 1
+        if r["src"]:
+            talkers[r["src"]] += 1
+        if r["src"] and r["dst"]:
+            k = tuple(sorted((r["src"], r["dst"])))
+            cv = convs.setdefault(k, {"n": 0, "bytes": 0, "protos": collections.Counter()})
+            cv["n"] += 1; cv["bytes"] += r["len"] or 0; cv["protos"][r["proto"]] += 1
+    out = [LLM_PROMPT, "", "=== CAPTURE ===",
+           f"When: {time.strftime('%a %d %b %Y, %H:%M:%S %Z', time.localtime(meta['ts']))} · Length: {meta.get('seconds', '?')} s · Packets: {len(rows)} (all included)",
+           f"Captured by: a Raspberry Pi home-network monitor (IP {me}) on its Wi-Fi interface (wlan0)",
+           f"Filter: {meta.get('filter') or 'none (everything the Pi could hear)'} — {meta.get('label', '')}",
+           "Detail: " + ("full tcpdump decode (-e -vv): MAC addresses, IP header fields and protocol details for every packet; no payload bytes"
+                         if full else "one line per packet (tcpdump summary); no payload bytes"),
+           "What the Pi can see: its own traffic, plus broadcast and multicast from other devices (ARP, DHCP, mDNS, SSDP...). "
+           "Other devices' private (unicast) traffic goes directly to the router and is NOT in this capture.",
+           f"Network: {SUBNET}, router 192.168.1.1."]
+    if EXTENDERS:
+        out.append(f"A Wi-Fi extender (MAC {', '.join(sorted(EXTENDERS))}) rewrites the MAC address of every device connected "
+                   "through it, so their packets carry the extender's MAC instead of their own.")
+    out += ["", "=== DEVICES IN THIS CAPTURE ===", f"{'IP':<16} {'MAC':<18} Name — type, maker"]
+    for d in sorted(shown, key=lambda d: tuple(int(x) for x in d["ip"].split(".")) if re.fullmatch(r"[\d.]+", d.get("ip") or "") else (999,)):
+        idn = d.get("ident") or {}
+        extra = ", ".join(x for x in [idn.get("type") if idn.get("type") != "Unknown" else None, idn.get("maker") or d.get("vendor"), idn.get("model"), idn.get("os")] if x)
+        flags = ("this Pi" if d.get("ip") == me else "") + (" · via Wi-Fi extender" if d.get("via") else "")
+        out.append(f"{d.get('ip') or '':<16} {d['mac'].split('@')[0]:<18} {dname(d)}" + (f" — {extra}" if extra else "") + (f" [{flags.strip(' ·')}]" if flags else ""))
+    out += ["", "=== SUMMARY ===", "Protocols: " + ", ".join(f"{p} {n}" for p, n in protos.most_common()),
+            "Top senders: " + ", ".join(f"{nm(ip)} {n}" for ip, n in talkers.most_common(10)), "Conversations (top 20 by packets):"]
+    for (a, b), cv in sorted(convs.items(), key=lambda kv: -kv[1]["n"])[:20]:
+        out.append(f"  {nm(a)} <-> {nm(b)}: {cv['n']} packets, {cv['bytes']} bytes ({', '.join(p for p, _ in cv['protos'].most_common())})")
+    out += ["", "=== PACKETS ===",
+            "Format: #number  +seconds since start  source -> destination  protocol  frame length" +
+            (", then tcpdump's full decode indented below (first line: MAC src > MAC dst, ethertype, length)" if full else " | tcpdump summary"), ""]
+    for i, r in enumerate(rows):
+        if not r:
+            out.append(f"#{i+1}  {brief[i][0]}")
+            continue
+        head = f"#{i+1}  +{r['t'] - t0:.3f}  {nm(r['src']) if r['src'] else '?'} -> {nm(r['dst']) if r['dst'] else '(none)'}  {r['proto']}" + (f"  {r['len']} B" if r["len"] else "")
+        if full:
+            out.append(head)
+            out.extend("    " + (re.sub(r"^\d+\.\d+ ", "", line) if j == 0 else line) for j, line in enumerate(full[i]))
+        else:
+            out.append(f"{head} | {r['info']}")
+    return "\n".join(out) + "\n"
+
 def api_capture(since=0):
     with CAP_LOCK:
         rows = [r for r in CAP["rows"] if r["n"] > since][-1000:]
@@ -1280,6 +1395,14 @@ class H(BaseHTTPRequestHandler):
             self.send(200, json.dumps(api_speed()))
         elif u.path == "/api/capture":
             self.send(200, json.dumps(api_capture(int(parse_qs(u.query).get("since", ["0"])[0] or 0))))
+        elif u.path == "/api/capture/llm":
+            q = parse_qs(u.query)
+            cid = q.get("id", [""])[0]
+            if not re.fullmatch(r"\d{8}-\d{6}", cid) or not os.path.exists(os.path.join(CAPDIR, cid + ".json")):
+                return self.send(404, '{"error":"Capture not found, or still running."}')
+            text = capture_llm_text(cid, "brief" if q.get("detail", [""])[0] == "brief" else "full")
+            hdr = [("Content-Disposition", f'attachment; filename="homehub-{cid}-for-llm.txt"')] if q.get("dl") else []
+            self.send(200, text, "text/plain; charset=utf-8", hdr)
         elif u.path == "/api/capture/file":
             cid = parse_qs(u.query).get("id", [""])[0]
             path = os.path.join(CAPDIR, cid + ".pcap")
@@ -1357,6 +1480,7 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/capture/delete":
                 cid = str(d.get("id", ""))
                 if re.fullmatch(r"\d{8}-\d{6}", cid) and cid != (CAP["id"] if CAP["running"] else None):
+                    print(f"capture {cid} deleted (request from {ip})", flush=True)
                     for ext in (".pcap", ".json"):
                         try: os.remove(os.path.join(CAPDIR, cid + ext))
                         except FileNotFoundError: pass
