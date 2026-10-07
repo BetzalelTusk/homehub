@@ -8,3 +8,5 @@ __pycache__/
 *.pyc
 school.json
 school.json.tmp
+school_feed.json
+school_feed.json.tmp

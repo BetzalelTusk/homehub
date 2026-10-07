@@ -834,6 +834,7 @@ button.dn:hover{background:var(--hover)}
             <h2 id="scTitle"></h2>
             <span style="flex:1"></span>
             <span class="cal-stamp" id="scStamp"></span>
+            <button class="cal-nav" id="scSyncBtn" onclick="scSync()" title="Sync with Brightspace now" aria-label="Sync now" hidden><svg class="i"><use href="#i-refresh"/></svg></button>
             <div class="seg2" id="scViews"></div>
             <button class="cal-nav" onclick="$('#scFile').click()" title="Import schedule.json" aria-label="Import schedule.json"><svg class="i" style="transform:rotate(180deg)"><use href="#i-download"/></svg></button>
             <input type="file" id="scFile" accept=".json,application/json" hidden>
@@ -866,6 +867,13 @@ button.dn:hover{background:var(--hover)}
               </div>
             </div>
             <div class="card-f"><button type="button" class="btn ol" id="alTest">Send test</button><button class="btn ct">Save</button></div>
+          </form>
+          <form class="card mt" id="scFeedForm">
+            <div class="card-h"><div><div class="h6">School calendar</div><div class="cap">Your Brightspace calendar feed, checked every 30 minutes for the School tab</div></div></div>
+            <div class="card-b" style="border-top:1px solid var(--border);padding-top:4px">
+              <div class="tf"><input id="scFeedUrl" type="password" autocomplete="off" spellcheck="false" placeholder="https://yourschool.brightspace.com/d2l/le/calendar/feed/user/feed.ics?token=…"><label for="scFeedUrl">Brightspace calendar feed link</label><div class="help" id="scFeedH">In Brightspace: Calendar → ⋯ → Subscribe. The link works like a password, so it isn't shown again once saved.</div></div>
+            </div>
+            <div class="card-f"><button type="button" class="btn ol er" id="scFeedDel" hidden>Remove</button><button class="btn ct">Save</button></div>
           </form>
           <form class="card mt" id="pwForm">
             <div class="card-h"><div><div class="h6">Password</div><div class="cap">Changing it signs out every other browser</div></div></div>
@@ -1016,10 +1024,14 @@ function drawSchool(){
  $('#scViews').innerHTML=[['month','Month'],['week','Week'],['agenda','Schedule']].map(([v,n])=>`<button class="${scView===v?'on':''}" onclick="scSetView('${v}')">${n}</button>`).join('');
  $('#scLegend').innerHTML=scCourses.map((c,n)=>`<button class="cal-cb ${scCol(c)} ${scHide.has(c)?'off':''}" onclick="scToggle(${n})"><span class="bx">${ic('check')}</span>${esc(c)}</button>`).join('');
  $('#scLegend').hidden=!scCourses.length;
- const gen=SC&&SC.generated?Date.parse(SC.generated):null;
- $('#scStamp').innerHTML=gen?`${now-gen>3*864e5?'<span class="chip warn">Out of date</span> ':''}Exported ${esc(scDate(gen,{month:'short',day:'numeric'}))}, ${esc(scTime(gen))}`:'';
+ const gen=SC&&SC.generated?Date.parse(SC.generated):null,fd=SC&&SC.feed||{};
+ $('#scSyncBtn').hidden=!fd.set;
+ $('#scStamp').innerHTML=fd.set
+  ?`${fd.error?`<span class="chip err" title="${esc(fd.error)}">Sync failed</span> `:''}${fd.synced?'Synced '+esc(ago(fd.synced)):'Not synced yet'}`
+  :gen?`${now-gen>3*864e5?'<span class="chip warn">Out of date</span> ':''}Exported ${esc(scDate(gen,{month:'short',day:'numeric'}))}, ${esc(scTime(gen))}`:'';
  if(!SCI.length){$('#scTitle').textContent=scDate(scAnchor,{month:'long',year:'numeric'});
-  $('#scBody').innerHTML=`<div class="empty">${ic('calendar')}No schedule yet. In Brightspace, run <span class="mono">await thisweek()</span> from tools/thisweek.js, then import the file with the button above.</div>`}
+  $('#scBody').innerHTML=`<div class="empty">${ic('calendar')}${fd.set?(fd.error?'Couldn\'t reach your Brightspace calendar feed: '+esc(fd.error):'Nothing in your Brightspace calendar yet.')
+   :'No schedule yet. Add your Brightspace calendar feed link in <a href="#settings">Settings</a>, or import schedule.json from <span class="mono">thisweek()</span>.'}</div>`}
  else if(scView==='month')scMonth();else if(scView==='week')scWeek();else scAgenda();
  $('#scNews').innerHTML=(SC.news||[]).map(n=>`<li><div class="li"><span class="av ${scCol(n.course)}" style="width:36px;height:36px;color:var(--ev)">${ic('bell','i s')}</span><span class="tx"><div class="p" style="white-space:normal">${esc(n.course)}: ${esc(n.title)}</div><div class="s2" style="white-space:normal">${esc(n.body)}</div></span><span class="end tm">${n.when?esc(scDate(Date.parse(n.when),{month:'short',day:'numeric'})):''}</span></div></li>`).join('')||`<div class="empty">No recent announcements.</div>`;
  $('#scNotesCard').hidden=!(SC.notes||[]).length;
@@ -1073,7 +1085,8 @@ function scOpen(e,k){const i=SCI.find(x=>x.k===k);if(!i)return;
  scPop(e,`<div class="pr ${scCol(i.course)}"><span class="sq"></span><div><h3>${esc(i.title)}</h3><div class="m">${esc(scDate(i.t,{weekday:'long',month:'long',day:'numeric'}))} · ${scWhen(i)}</div></div></div>`+
   `<div class="pr">${ic('clock')}<div class="m">${rel[0].toUpperCase()+rel.slice(1)}</div></div>`+
   `<div class="pr">${ic('school')}<div class="m">${esc(i.course)}${i.kind&&i.kind!=='Calendar'?' · '+esc(i.kind):''}</div></div>`+
-  `<div class="pr">${ic('check')}<div class="m">${status}</div></div>`)}
+  `<div class="pr">${ic('check')}<div class="m">${status}</div></div>`+
+  (/^https:\/\/[a-z0-9.-]+\.brightspace\.com\//.test(i.link||'')?`<div class="pr">${ic('ext')}<div class="m"><a href="${esc(i.link)}" target="_blank" rel="noopener">Open in Brightspace</a></div></div>`:''))}
 function scDayPop(e,day){const its=scOn(day);if(!its.length)return;
  scPop(e,`<div class="dh">${esc(scDate(day,{weekday:'short'}).toUpperCase())}</div><div class="dbig">${new Date(day).getDate()}</div><div class="cal-evs" style="padding:0 12px">${its.map(scChip).join('')}</div>`)}
 document.addEventListener('click',scClose);
@@ -1084,6 +1097,21 @@ addEventListener('keydown',e=>{
  const k=e.key.toLowerCase();
  if(k==='t')scGo(0);else if(k==='j'||k==='n')scGo(1);else if(k==='k'||k==='p')scGo(-1);
  else if(k==='m')scSetView('month');else if(k==='w')scSetView('week');else if(k==='a')scSetView('agenda')});
+async function scSync(){const b=$('#scSyncBtn');b.disabled=true;
+ try{const f=await api('/api/school/sync',{});f.error?snack('Sync failed: '+f.error,'err'):snack(`Synced ${f.count} events`);await loadSchool()}
+ catch(err){snack(err.message,'err')}finally{b.disabled=false}}
+async function scFeedStatus(){let f;try{f=(await api('/api/school')).feed||{}}catch(e){return}
+ $('#scFeedDel').hidden=!f.set;
+ $('#scFeedH').innerHTML=!f.set?'In Brightspace: Calendar → ⋯ → Subscribe. The link works like a password, so it isn\'t shown again once saved.'
+  :f.error?`<span style="color:var(--err-t)">Saved, but the last sync failed: ${esc(f.error)}</span>`
+  :`Saved. ${f.count} events, synced ${esc(ago(f.synced))}. Paste a new link to replace it.`}
+$('#scFeedForm').addEventListener('submit',async e=>{e.preventDefault();const u=$('#scFeedUrl').value.trim();
+ if(!u)return snack('Paste the feed link first','warn');
+ try{const f=await api('/api/school/feed',{url:u});$('#scFeedUrl').value='';
+  f.error?snack('Saved, but the first sync failed: '+f.error,'err'):snack(`Saved. Synced ${f.count} events`);scFeedStatus();loadSchool()}
+ catch(err){snack(err.message,'err')}});
+$('#scFeedDel').addEventListener('click',async()=>{if(!confirm('Remove the Brightspace calendar feed from the hub?'))return;
+ try{await api('/api/school/feed',{url:''});snack('Feed removed');scFeedStatus();loadSchool()}catch(err){snack(err.message,'err')}});
 $('#scFile').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
  try{const r=await api('/api/school',JSON.parse(await f.text()));snack(`Imported ${r.count} items`);loadSchool()}
  catch(err){snack(err instanceof SyntaxError?'That file is not valid JSON.':err.message,'err')}});
@@ -1100,7 +1128,7 @@ function route(){
  if(view==='device')addRecent(devMac);
  title();window.scrollTo(0,0);app.classList.remove('open');
  if(view==='device'){drawDev();loadDev()}else if(S)draw()
- if(view==='activity')loadEvents();if(view==='settings')loadAlerts();if(view==='school')loadSchool();if(view==='packets'){fillCapDevs();loadCap()}}
+ if(view==='activity')loadEvents();if(view==='settings'){loadAlerts();scFeedStatus()}if(view==='school')loadSchool();if(view==='packets'){fillCapDevs();loadCap()}}
 const SUBS={school:'What is due, from Brightspace. Run thisweek() while signed in, then import the file here.',packets:'Capture what the Pi can hear on your network, Wireshark-style',devices:'Everything connected to your home network. Select a device to see what the hub knows about it.',internet:'Your connection, checked every 10 seconds',activity:'Everything the hub has noticed, newest first · counts cover the last 7 days',settings:'Password, notifications and sign-out'};
 let OVSUM='Checking your network…';
 function greeting(){const hr=new Date().getHours();return hr<5?'Good night':hr<12?'Good morning':hr<18?'Good afternoon':'Good evening'}
@@ -1701,6 +1729,6 @@ $('#q').addEventListener('input',()=>{$('#hq').value=$('#q').value});
 $('#bigq').oninput=()=>{const v=$('#bigq').value;$('#q').value=$('#hq').value=v;$('#bigq').value='';location.hash='#devices';
  setTimeout(()=>{const q=$('#q');q.focus();q.setSelectionRange(v.length,v.length)},30)};
 addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();const t=view==='overview'?$('#bigq'):innerWidth>900?$('#hq'):$('#q');if(t)t.focus()}});
-drawRangePickers();route();load();setInterval(load,15000);loadAlerts();loadSchool();supergraphics();loadHist();setInterval(loadHist,60000);loadSpeed();
+drawRangePickers();route();load();setInterval(load,15000);loadAlerts();loadSchool();setInterval(loadSchool,300000);supergraphics();loadHist();setInterval(loadHist,60000);loadSpeed();
 </script>
 </body></html>

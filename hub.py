@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Home hub: LAN device inventory, presence, internet monitor. stdlib only."""
-import collections, hashlib, hmac, json, os, queue, re, secrets, socket, sqlite3, subprocess, sys, threading, time
+import calendar, collections, hashlib, hmac, json, os, queue, re, secrets, socket, sqlite3, subprocess, sys, threading, time
 import urllib.request, xml.etree.ElementTree as ET
 import ident
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,6 +10,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(HERE, "hub.db")
 CONF = os.path.join(HERE, "config.json")
 SCHOOL = os.path.join(HERE, "school.json")   # schedule exported from Brightspace by tools/thisweek.js
+FEED_CACHE = os.path.join(HERE, "school_feed.json")   # last good copy of the Brightspace calendar feed
+FEED_EVERY = 1800        # seconds between Brightspace calendar feed fetches
 SUBNET = "192.168.1.0/24"
 PORT = 8080
 SCAN_EVERY = 60          # seconds between LAN sweeps
@@ -1218,14 +1220,141 @@ def api_events(q):
                 if r["kind"] in ks: counts[g] += r["n"]
     return {"events": rows[:limit], "more": len(rows) > limit, "week": counts}
 
+# --- Brightspace calendar feed -------------------------------------------------
+# The feed URL carries its own token, so the Pi can fetch it without a Brightspace
+# login. It has the events but no grades, so "done" still comes from the last
+# schedule.json import (matched by title).
+feed = {"items": [], "synced": None, "error": None, "tried": 0}
+
+def _norm_title(t):
+    t = re.sub(r"\s+-\s+due$", "", (t or "").strip(), flags=re.I)
+    return re.sub(r"[^a-z0-9.]+", " ", t.lower()).strip()
+
+def parse_ics(text):
+    lines = []
+    for raw in text.splitlines():
+        if raw[:1] in (" ", "\t") and lines:   # RFC 5545 line folding
+            lines[-1] += raw[1:]
+        else:
+            lines.append(raw)
+    evs, cur = [], None
+    for ln in lines:
+        if ln == "BEGIN:VEVENT":
+            cur = {}
+        elif ln == "END:VEVENT":
+            if cur is not None:
+                evs.append(cur)
+            cur = None
+        elif cur is not None and ":" in ln:
+            k, v = ln.split(":", 1)
+            name, _, params = k.partition(";")
+            cur[name.upper()] = (v, params.upper())
+    return evs
+
+def _ics_text(v):
+    return re.sub(r"\\([,;\\nN])", lambda m: "\n" if m.group(1) in "nN" else m.group(1), v)
+
+def feed_items(evs):
+    now, out = time.time(), []
+    for e in evs:
+        v, params = e.get("DTSTART", ("", ""))
+        try:
+            if "VALUE=DATE" in params and len(v) == 8:   # all-day: local midnight, no zone
+                ts = time.mktime(time.strptime(v, "%Y%m%d"))
+                when = f"{v[:4]}-{v[4:6]}-{v[6:]}T00:00:00"
+            elif v.endswith("Z"):
+                ts = calendar.timegm(time.strptime(v, "%Y%m%dT%H%M%SZ"))
+                when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+            else:
+                continue   # floating/TZID times: Brightspace doesn't send these
+        except ValueError:
+            continue
+        if not now - 60 * 86400 <= ts <= now + 240 * 86400:   # drops last term's leftovers
+            continue
+        loc = _ics_text(e.get("LOCATION", ("", ""))[0])
+        m = re.search(r"\b([A-Z]{3,4})\s?(\d{3})\b", loc)
+        desc = _ics_text(e.get("DESCRIPTION", ("", ""))[0])
+        links = re.findall(r"https://[a-z0-9.-]+\.brightspace\.com/[^\s\"<>]+", desc)
+        view = re.search(r"View event - (https://[a-z0-9.-]+\.brightspace\.com/[^\s\"<>]+)", desc)
+        title = re.sub(r"\s+-\s+Due$", "", _ics_text(e.get("SUMMARY", ("", ""))[0]).strip())
+        out.append({"course": m.group(1) + m.group(2) if m else loc[:20], "kind": "Calendar", "title": title[:200],
+                    "when": when, "link": (view.group(1) if view else links[0] if links else "")[:500],
+                    "uid": e.get("UID", ("", ""))[0][:100]})
+    return sorted(out, key=lambda i: i["when"])
+
+def sync_school_feed(force=False):
+    url = load_conf().get("school_feed")
+    if not url or (force and time.time() - feed["tried"] < 15):
+        return
+    feed["tried"] = time.time()
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "HomeHub/1.0"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            text = r.read(4_000_000).decode("utf-8", "replace")
+        if "BEGIN:VCALENDAR" not in text:
+            raise ValueError("Brightspace didn't send a calendar. Has the feed link been reset?")
+        items = feed_items(parse_ics(text))
+        feed.update(items=items, synced=time.time(), error=None)
+        tmp = FEED_CACHE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"items": items, "synced": feed["synced"]}, f)
+        os.replace(tmp, FEED_CACHE)
+    except Exception as e:
+        feed["error"] = re.sub(r"token=[^&\s]+", "token=…", str(e))[:200]
+
+def load_feed_cache():
+    try:
+        with open(FEED_CACHE) as f:
+            c = json.load(f)
+        feed.update(items=c.get("items") or [], synced=c.get("synced"))
+    except (OSError, ValueError):
+        pass
+
+def feed_loop():
+    while True:
+        sync_school_feed()
+        time.sleep(FEED_EVERY)
+
+def set_school_feed(url):
+    conf = load_conf()
+    if not url:
+        conf.pop("school_feed", None)
+        save_conf(conf)
+        feed.update(items=[], synced=None, error=None)
+        try:
+            os.remove(FEED_CACHE)
+        except OSError:
+            pass
+        return
+    p = urlparse(url)
+    if p.scheme != "https" or not (p.hostname or "").endswith(".brightspace.com") or not p.path.endswith(".ics"):
+        raise ValueError("That isn't a Brightspace calendar feed link (https://…brightspace.com/…/feed.ics?token=…).")
+    conf["school_feed"] = url
+    save_conf(conf)
+    feed.update(items=[], synced=None, error=None, tried=0)
+    sync_school_feed()
+
 def api_school():
     try:
         with open(SCHOOL) as f:
             d = json.load(f)
         d["saved"] = os.path.getmtime(SCHOOL)
-        return d
     except (OSError, ValueError):
-        return {"items": [], "news": [], "notes": [], "generated": None, "saved": None}
+        d = {"items": [], "news": [], "notes": [], "generated": None, "saved": None}
+    on = bool(load_conf().get("school_feed"))
+    if on and feed["items"]:
+        # Done = scored in Brightspace grades, as of the last schedule.json import.
+        done = {_norm_title(i["title"]) for i in d["items"] if i.get("done")} | {_norm_title(n) for n in d.get("scored") or []}
+        done.discard("")
+        def is_done(title):
+            n = _norm_title(title)
+            return n in done or (len(n) >= 8 and any(len(x) >= 8 and (x in n or n in x) for x in done))
+        have = {_norm_title(i["title"]) for i in feed["items"]}
+        d["items"] = [dict(i, done=is_done(i["title"])) for i in feed["items"]] + \
+                     [i for i in d["items"] if _norm_title(i["title"]) not in have]
+    d.pop("scored", None)
+    d["feed"] = {"set": on, "synced": feed["synced"], "error": feed["error"] if on else None, "count": len(feed["items"])}
+    return d
 
 
 def save_school(d):
@@ -1241,7 +1370,9 @@ def save_school(d):
     news = [{"course": s(n.get("course"), 20), "when": s(n.get("when"), 40), "title": s(n.get("title"), 200), "body": s(n.get("body"), 400)}
             for n in (d.get("news") or [])[:30] if isinstance(n, dict)]
     notes = [s(n, 300) for n in (d.get("notes") or [])[:20]]
-    out = {"generated": s(d.get("generated"), 40), "tz": s(d.get("tz"), 40), "items": items, "news": news, "notes": notes}
+    scored = [s(n, 200) for n in (d.get("scored") or [])[:500] if n]
+    out = {"generated": s(d.get("generated"), 40), "tz": s(d.get("tz"), 40), "items": items, "news": news, "notes": notes,
+           "scored": scored}
     tmp = SCHOOL + ".tmp"
     with open(tmp, "w") as f:
         json.dump(out, f)
@@ -1478,6 +1609,12 @@ class H(BaseHTTPRequestHandler):
             mac = str(d.get("mac", "")).lower()
             if u.path == "/api/school":
                 return self.send(200, json.dumps({"ok": True, "count": save_school(d)}))
+            if u.path == "/api/school/feed":
+                set_school_feed(str(d.get("url", "")).strip())
+                return self.send(200, json.dumps(api_school()["feed"]))
+            if u.path == "/api/school/sync":
+                sync_school_feed(force=True)
+                return self.send(200, json.dumps(api_school()["feed"]))
             if u.path == "/api/password":
                 if not check_password(d.get("current", "")):
                     return self.send(403, '{"error":"Current password is wrong."}')
@@ -1583,6 +1720,8 @@ if __name__ == "__main__":
     threading.Thread(target=fingerprint_loop, daemon=True).start()
     threading.Thread(target=notify_loop, daemon=True).start()
     threading.Thread(target=speed_loop, daemon=True).start()
+    load_feed_cache()
+    threading.Thread(target=feed_loop, daemon=True).start()
     threading.Thread(target=ident.dhcp_listener, args=(on_dhcp,), daemon=True).start()
     print(f"Home hub on :{PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
