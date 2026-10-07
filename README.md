@@ -1,7 +1,8 @@
 # Home Hub
 
 A home network dashboard for a Raspberry Pi: device inventory and identification, presence ("who's home"),
-internet monitoring, alerts (ntfy / Telegram) and a wall display for an old iPad. Python standard library only.
+internet monitoring with Cloudflare speed tests, alerts (ntfy / Telegram), Wireshark-style packet capture
+(tcpdump) and a wall display for an old iPad. Python standard library only; needs `nmap`, `avahi-utils` and `tcpdump`.
 
 - `hub.py` – server, scanners, API (port 8080)
 - `ident.py` – device identification (DHCP, NetBIOS, nmap fingerprinting)
@@ -10,5 +11,5 @@ internet monitoring, alerts (ntfy / Telegram) and a wall display for an old iPad
 - `manuf` – Wireshark's MAC vendor list
 - `homehub.service` – systemd unit (copy to `/etc/systemd/system/`)
 
-Not in git: `hub.db` (history) and `config.json` (password hash, alert tokens).
+Not in git: `hub.db` (history), `config.json` (password hash, alert tokens) and `captures/` (saved .pcap files).
 Set a password with `python3 hub.py --set-password`.

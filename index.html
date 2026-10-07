@@ -180,6 +180,12 @@ a.qtile:hover,button.qtile:hover{background:var(--tile-h);text-decoration:none}
 .range{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-weight:500;color:var(--head)}
 .range .i{color:var(--icon)}
 .icbtn{width:36px;height:36px;border-radius:6px;display:grid;place-items:center;color:var(--icon)}
+/* packet table */
+.pk td{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;padding:5px 12px;white-space:nowrap;border-bottom:1px solid var(--border-s)}
+.pk td.info{max-width:520px;overflow:hidden;text-overflow:ellipsis}
+.pk th{position:sticky;top:0;z-index:1;padding:8px 12px}
+.pk .chip{height:19px;padding:0 6px;border-radius:4px;font-size:11.5px}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* range picker */
 .rp{position:relative}
 button.range{cursor:pointer}
@@ -225,7 +231,7 @@ a.metric:hover{text-decoration:none;border-color:var(--line)}
 .trow a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tbar{height:8px;border-radius:4px;background:var(--tile);overflow:hidden}
 .tbar i{display:block;height:100%;border-radius:4px;background:var(--bar)}
-.trow span{text-align:right;color:var(--head);font-variant-numeric:tabular-nums}
+.trow>span:last-child{text-align:right;color:var(--head);font-variant-numeric:tabular-nums}
 
 /* ---------- cards ---------- */
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);min-width:0;overflow:hidden}
@@ -540,6 +546,11 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
  <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16.555 3.843l3.602 3.602a2.877 2.877 0 0 1 0 4.069l-2.643 2.643a2.877 2.877 0 0 1 -4.069 0l-.301 -.301l-6.558 6.558a2 2 0 0 1 -1.239 .578l-.175 .008h-1.172a1 1 0 0 1 -.993 -.883l-.007 -.117v-1.172a2 2 0 0 1 .467 -1.284l.119 -.13l.414 -.414h2v-2h2v-2l2.144 -2.144l-.301 -.301a2.877 2.877 0 0 1 0 -4.069l2.643 -2.643a2.877 2.877 0 0 1 4.069 0" /><path d="M15 9h.01" /></symbol>
  <symbol id="i-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v2.172a2 2 0 0 1 -.586 1.414l-4.414 4.414v7l-6 2v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227" /></symbol>
  <symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0" /><path d="M13 18l6 -6" /><path d="M13 6l6 6" /></symbol>
+ <symbol id="i-packets" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3v6" /><path d="M10 18l-3 3l-3 -3" /><path d="M7 21v-18" /><path d="M20 6l-3 -3l-3 3" /><path d="M17 21v-2" /><path d="M17 15v-2" /></symbol>
+ <symbol id="i-record" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" /></symbol>
+ <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -10" /></symbol>
+ <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" /><path d="M7 11l5 5l5 -5" /><path d="M12 4l0 12" /></symbol>
+ <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M12 9h.01" /><path d="M11 12h1v4h1" /></symbol>
 </svg>
 
 <div id="app">
@@ -552,6 +563,7 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
     <div class="sec">Network</div>
     <a href="#devices" data-v="devices"><svg class="i"><use href="#i-devices"/></svg><span>Devices</span><span class="pill cf" id="navNew" hidden></span></a>
     <a href="#internet" data-v="internet"><svg class="i"><use href="#i-globe"/></svg><span>Internet</span></a>
+    <a href="#packets" data-v="packets"><svg class="i"><use href="#i-packets"/></svg><span>Packets</span></a>
     <div class="sec">Display</div>
     <a href="/display" target="_blank"><svg class="i"><use href="#i-display"/></svg><span>Wall display</span><svg class="i x"><use href="#i-ext"/></svg></a>
   </nav>
@@ -632,6 +644,32 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
           <div class="speedrow" id="spRow"></div>
           <div class="chart" id="chartSpeed"></div><div class="legend"><span><i style="background:var(--chart)"></i>Download (Mbps)</span><span><i style="background:var(--s1)"></i>Upload (Mbps)</span><span>Measured over the Pi's Wi-Fi, so it's the speed a Wi-Fi device gets here, which can be less than your plan.</span></div></div>
         <div class="card mt"><div class="card-h"><div><div class="h6">Outages</div><div class="cap" id="outCap">Times the internet stopped working</div></div></div><div class="tw"><table><thead><tr><th>When</th><th>How long</th><th>Status</th></tr></thead><tbody id="outBody"></tbody></table></div></div>
+      </section>
+
+      <!-- PACKETS -->
+      <section class="view" id="v-packets">
+        <div class="alert" style="background:var(--info-l);border-color:transparent;color:var(--info)"><svg class="i"><use href="#i-info"/></svg><div class="m"><b>What the Pi can hear.</b> On Wi-Fi the Pi sees its own traffic plus what devices send to everyone: joining the network (DHCP), finding each other (ARP) and announcing themselves (mDNS, SSDP). Other devices' private traffic goes straight to the router, so it doesn't show up here. Download a capture to open it in Wireshark.</div></div>
+        <form class="card" id="capForm">
+          <div class="card-h"><div><div class="h6">New capture</div><div class="cap" id="capStatus">Not capturing</div></div></div>
+          <div class="card-b" style="border-top:1px solid var(--border);padding-top:2px">
+            <div class="grid g3" style="gap:12px">
+              <div class="tf"><select class="fsel" id="capPreset"><option value="all">Everything the Pi can see</option><option value="discovery">Discovery chatter (mDNS, SSDP, ARP)</option><option value="dhcp">Devices joining (DHCP)</option><option value="dns">Name lookups (DNS, mDNS)</option><option value="device">One device</option><option value="custom">Custom tcpdump filter</option></select><label for="capPreset">Capture</label></div>
+              <div class="tf" id="capDevW" hidden><select class="fsel" id="capDev"></select><label for="capDev">Device</label><div class="help">Shows what it broadcasts and anything it sends the Pi</div></div>
+              <div class="tf" id="capFiltW" hidden><input id="capFilt" placeholder="e.g. udp port 5353 and host 192.168.1.20" spellcheck="false" autocomplete="off"><label for="capFilt">tcpdump filter</label></div>
+              <div class="tf"><select class="fsel" id="capSecs"><option value="10">10 seconds</option><option value="30" selected>30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></select><label for="capSecs">For</label></div>
+            </div>
+          </div>
+          <div class="card-f"><button type="button" class="btn ol" id="capStop" hidden><svg class="i"><use href="#i-stop"/></svg>Stop</button><button class="btn ct" id="capStart"><svg class="i"><use href="#i-record"/></svg>Start capture</button></div>
+        </form>
+        <div class="grid g11 mt">
+          <div class="card"><div class="card-h"><div><div class="h6">Protocols</div><div class="cap">Packets by type in this capture</div></div></div><div id="capProtos" style="padding:4px 0 10px"></div></div>
+          <div class="card"><div class="card-h"><div><div class="h6">Top talkers</div><div class="cap">Who sent the most packets</div></div></div><div id="capTalk" style="padding:4px 0 10px"></div></div>
+        </div>
+        <div class="card mt">
+          <div class="tb"><label class="search"><svg class="i"><use href="#i-search"/></svg><input id="capQ" type="search" placeholder="Filter packets"></label><span style="flex:1"></span><span class="cap" id="capCount"></span></div>
+          <div class="tw" style="max-height:520px;overflow:auto;border-top:1px solid var(--border)" id="capWrap"><table class="pk"><thead><tr><th>No.</th><th>Time</th><th>Source</th><th>Destination</th><th>Protocol</th><th>Length</th><th>Info</th></tr></thead><tbody id="capBody"></tbody></table></div>
+        </div>
+        <div class="card mt"><div class="card-h"><div><div class="h6">Saved captures</div><div class="cap">The newest 10 are kept on the Pi. Open them in Wireshark for every detail.</div></div></div><div class="tw"><table><thead><tr><th>When</th><th>What</th><th>Packets</th><th>Size</th><th></th></tr></thead><tbody id="capFiles"></tbody></table></div></div>
       </section>
 
       <!-- ACTIVITY -->
@@ -758,7 +796,7 @@ function avatar(d,cls=''){const k=kind(d);return`<span class="avw"><span class="
 const statusChip=d=>d.online?'<span class="chip ok"><span class="dt"></span>Online</span>':'<span class="chip off"><span class="dt"></span>Offline</span>';
 
 /* routing */
-const NAMES={overview:'Overview',devices:'Devices',internet:'Internet',activity:'Activity',settings:'Settings'};
+const NAMES={overview:'Overview',devices:'Devices',internet:'Internet',packets:'Packets',activity:'Activity',settings:'Settings'};
 function route(){
  const h=(location.hash||'#overview').slice(1);
  if(h.startsWith('device/')){view='device';const m=decodeURIComponent(h.slice(7));if(m!==devMac){devMac=m;DV=null;pingRes=null;devTab=null;PR=null}}
@@ -769,8 +807,8 @@ function route(){
  if(view==='device')addRecent(devMac);
  title();window.scrollTo(0,0);app.classList.remove('open');
  if(view==='device'){drawDev();loadDev()}else if(S)draw()
- if(view==='activity')loadEvents();if(view==='settings')loadAlerts()}
-const SUBS={devices:'Everything connected to your home network. Select a device to see what the hub knows about it.',internet:'Your connection, checked every 10 seconds',activity:'Everything the hub has noticed, newest first · counts cover the last 7 days',settings:'Password, notifications and sign-out'};
+ if(view==='activity')loadEvents();if(view==='settings')loadAlerts();if(view==='packets'){fillCapDevs();loadCap()}}
+const SUBS={packets:'Capture what the Pi can hear on your network, Wireshark-style',devices:'Everything connected to your home network. Select a device to see what the hub knows about it.',internet:'Your connection, checked every 10 seconds',activity:'Everything the hub has noticed, newest first · counts cover the last 7 days',settings:'Password, notifications and sign-out'};
 let OVSUM='Checking your network…';
 function greeting(){const hr=new Date().getHours();return hr<5?'Good night':hr<12?'Good morning':hr<18?'Good afternoon':'Good evening'}
 function title(){
@@ -933,6 +971,7 @@ function drawDev(){
    <button class="btn ol" onclick="doScan()" ${d.scanning?'disabled':''} title="Fingerprint it now: open ports, services and operating system">${d.scanning?'<span class="spin"></span>Scanning…':ic('shield')+(d.scan_ts?'Re-identify':'Identify now')}</button>
    ${d.is_person?'':`<button class="btn ol" onclick="toggleWatch()" title="Get a notification when it goes offline or comes back">${ic(d.watch?'eye':'bell')}${d.watch?'Stop watching':'Watch'}</button>`}
    ${/Computer|Laptop/.test(k.name)?`<button class="btn ol" onclick="doWake()" title="Send a Wake-on-LAN signal to turn it on">${ic('power')}Wake up</button>`:''}
+   <button class="btn ol" onclick="captureDevice('${esc(d.ip)}')" title="Capture what this device broadcasts, Wireshark-style">${ic('packets')}Capture</button>
    <span style="flex:1"></span>
    <button class="btn ol er" onclick="forget()">${ic('delete')}Forget</button>
   </div>
@@ -1259,6 +1298,48 @@ function drawSpeed(){if(!SPD||!$('#spRow'))return;const l=SPD.last,h=H[RANGE];
  if(view==='internet')lineChart($('#chartSpeed'),sp.map(p=>({t:p.ts,v:p.down})),{H:200,t0:h?h.t0:NOW()-86400,t1:h?h.t1:NOW(),unit:' Mbps',xlabels:true,dots:true,label:'Download',extra:[{pts:sp.map(p=>({t:p.ts,v:p.up})),color:'--s1',label:'Upload'}]})}
 $('#spRun').onclick=async()=>{try{SPD=await api('/api/speed/run',{});drawSpeed();clearTimeout(spT);spT=setTimeout(loadSpeed,1500)}catch(e){snack(e.message,'err')}};
 $('#spEvery').onchange=async e=>{const v=+e.target.value;try{SPD=await api('/api/speed/settings',{every_h:v});drawSpeed();snack(v?`Speed test ${v===24?'once a day':'every '+v+(v>1?' hours':' hour')}`:'Automatic speed tests turned off')}catch(err){snack(err.message,'err')}};
+/* packet capture */
+let CAPS=null,capId=null,capSeq=0,capRows=[],capT,capErrShown=null;
+const PCLS={DNS:'pri',mDNS:'pri',LLMNR:'pri',ARP:'warn',DHCP:'ok',SSDP:'out','WS-Discovery':'out',ICMP:'err',ICMPv6:'err',IGMP:'out'};
+const devByIp=ip=>S&&S.devices.find(d=>d.ip===ip);
+const hostName=ip=>{const d=devByIp(ip);return d?label(d):ip};
+function fillCapDevs(){const sel=$('#capDev');if(!S||!sel)return;const cur=sel.value;
+ sel.innerHTML=[...S.devices].sort((a,b)=>(b.online-a.online)||label(a).localeCompare(label(b))).map(d=>`<option value="${esc(d.ip)}">${esc(label(d))} (${esc(d.ip)})${d.online?'':' · offline'}</option>`).join('');
+ if(cur)sel.value=cur}
+function captureDevice(ip){location.hash='#packets';setTimeout(()=>{$('#capPreset').value='device';capPresetChange();fillCapDevs();$('#capDev').value=ip},60)}
+function capPresetChange(){const v=$('#capPreset').value;$('#capDevW').hidden=v!=='device';$('#capFiltW').hidden=v!=='custom'}
+async function loadCap(){
+ try{const r=await api('/api/capture?since='+capSeq);
+  if(r.id!==capId){capId=r.id;capRows=[];capSeq=0;if(r.rows.length&&r.rows[0].n>1)return loadCap()}
+  CAPS=r;capRows=capRows.concat(r.rows).slice(-1000);if(r.rows.length)capSeq=r.rows[r.rows.length-1].n;
+  drawCap();clearTimeout(capT);if(r.running&&view==='packets')capT=setTimeout(loadCap,1000)}catch(e){}}
+function bars(el,list,name){const mx=list.length?list[0][1]:1;
+ el.innerHTML=list.length?list.map(([n,c])=>`<div class="trow"><span class="ell" title="${esc(n)}">${esc(name?name(n):n)}</span><div class="tbar"><i style="width:${(c/mx*100).toFixed(1)}%"></i></div><span>${c}</span></div>`).join('')
+  :`<div class="empty">Start a capture to see this</div>`}
+function drawCap(){if(!CAPS||!$('#capBody'))return;const c=CAPS;
+ const left=c.running?Math.max(0,Math.round(c.ends-NOW())):0;
+ $('#capStatus').innerHTML=c.running?`<span class="spin" style="color:var(--cf);vertical-align:-2px"></span>&nbsp; Capturing “${esc(c.label)}” · ${c.count} packets · ${left}s left`
+  :c.error?`<span style="color:var(--err-t)">${esc(c.error)}</span>`:c.id?`Last capture: “${esc(c.label)}”, ${c.count} packets`:'Not capturing';
+ $('#capStart').hidden=c.running;$('#capStop').hidden=!c.running;
+ bars($('#capProtos'),c.protos);bars($('#capTalk'),c.talkers,hostName);
+ const q=$('#capQ').value.trim().toLowerCase();
+ const rows=capRows.filter(r=>!q||[r.src,r.dst,hostName(r.src),hostName(r.dst),r.proto,r.info].join(' ').toLowerCase().includes(q)).slice(-500);
+ const wrap=$('#capWrap'),atEnd=wrap.scrollTop+wrap.clientHeight>=wrap.scrollHeight-30;
+ $('#capBody').innerHTML=rows.length?rows.map(r=>`<tr><td class="mut">${r.n}</td><td class="mut">${(r.t-c.started).toFixed(3)}</td><td title="${esc(r.src)}">${esc(hostName(r.src))}</td><td title="${esc(r.dst)}">${esc(hostName(r.dst))}</td><td><span class="chip ${PCLS[r.proto]||'off'}">${esc(r.proto)}</span></td><td class="mut">${r.len??''}</td><td class="info" title="${esc(r.info)}">${esc(r.info)}</td></tr>`).join('')
+  :`<tr><td colspan="7"><div class="empty">${ic('packets')}${c.running?'Listening… packets show up here as they arrive.':'No packets yet. Start a capture above.'}</div></td></tr>`;
+ if(atEnd)wrap.scrollTop=wrap.scrollHeight;
+ $('#capCount').textContent=capRows.length?`${rows.length} of ${c.count} packets shown`:'';
+ $('#capFiles').innerHTML=c.files.length?c.files.map(f=>`<tr><td>${fmt(f.ts)}<div class="cap">${ago(f.ts)}</div></td><td>${esc(f.label)}${f.filter?`<div class="cap mono">${esc(f.filter)}</div>`:''}</td><td>${f.packets}</td><td class="mut">${(f.size/1024).toFixed(f.size<102400?1:0)} KB</td>
+  <td style="text-align:right;white-space:nowrap"><a class="btn tx sm" href="/api/capture/file?id=${esc(f.id)}" download>${ic('download')}.pcap</a><button class="btn tx sm" style="color:var(--err-t)" onclick="delCap('${esc(f.id)}')">${ic('delete')}</button></td></tr>`).join('')
+  :`<tr><td colspan="5"><div class="empty">No saved captures yet.</div></td></tr>`}
+async function delCap(id){if(!await confirmBox('Delete this capture?','The saved .pcap file will be removed from the Pi.','Delete'))return;
+ try{const r=await api('/api/capture/delete',{id});CAPS.files=r.files;drawCap()}catch(e){snack(e.message,'err')}}
+$('#capPreset').onchange=capPresetChange;
+$('#capQ').oninput=drawCap;
+$('#capForm').onsubmit=async e=>{e.preventDefault();
+ try{const r=await api('/api/capture/start',{preset:$('#capPreset').value,ip:$('#capDev').value,filter:$('#capFilt').value,seconds:+$('#capSecs').value});
+  capId=r.id;capSeq=0;capRows=[];CAPS=r;drawCap();clearTimeout(capT);capT=setTimeout(loadCap,800)}catch(err){snack(err.message,'err')}};
+$('#capStop').onclick=async()=>{try{await api('/api/capture/stop',{})}catch(e){}setTimeout(loadCap,600)};
 /* supergraphics: a sweep of concentric stripes (top-right), a hatched globe (bottom-left), a halftone field and a double rule.
    Drawn once per size and theme; kept quieter than on the wall display because this page has more text on the canvas. */
 let sgKey='';

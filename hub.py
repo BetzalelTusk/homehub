@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Home hub: LAN device inventory, presence, internet monitor. stdlib only."""
-import hashlib, hmac, json, os, queue, re, secrets, socket, sqlite3, subprocess, sys, threading, time
+import collections, hashlib, hmac, json, os, queue, re, secrets, socket, sqlite3, subprocess, sys, threading, time
 import urllib.request, xml.etree.ElementTree as ET
 import ident
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -771,6 +771,152 @@ def api_speed():
     return {"running": SPEED["running"], "phase": SPEED["phase"], "every_h": speed_every(),
             "last": next((r for r in recent if not r["err"]), None), "recent": recent}
 
+# ---------- packet capture (tcpdump; open the saved .pcap in Wireshark) ----------
+# On Wi-Fi the Pi only sees its own traffic plus broadcast / multicast "chatter" (ARP, DHCP, mDNS, SSDP, ...);
+# other devices' private traffic goes straight between them and the router.
+CAPDIR = os.path.join(HERE, "captures")
+CAP_KEEP = 10                       # saved captures to keep
+CAP_PRESETS = {"all": "", "discovery": "arp or udp port 5353 or udp port 1900", "dhcp": "udp port 67 or udp port 68",
+               "dns": "port 53 or udp port 5353", "pi": ""}
+CAP_SAFE = re.compile(r"^[A-Za-z0-9 .:/()!&|=<>\[\]-]{0,200}$")
+APP_PORTS = {53: "DNS", 5353: "mDNS", 1900: "SSDP", 67: "DHCP", 68: "DHCP", 443: "TLS", 80: "HTTP", 123: "NTP", 137: "NetBIOS",
+             138: "NetBIOS", 5355: "LLMNR", 3702: "WS-Discovery", 8080: "HTTP", 22: "SSH", 1883: "MQTT", 6666: "Tuya", 6667: "Tuya",
+             9999: "Kasa", 8009: "Cast", 7000: "AirPlay", 554: "RTSP", 3478: "STUN", 41641: "Tailscale"}
+CAP = {"id": None, "proc": None, "running": False, "started": None, "ends": None, "filter": "", "label": "", "seq": 0,
+       "rows": collections.deque(maxlen=3000), "protos": collections.Counter(), "talkers": collections.Counter(), "error": None}
+CAP_LOCK = threading.Lock()
+
+def _split_addr(a):
+    """tcpdump writes '192.168.1.5.443' / 'fe80::1.5353': split off the port."""
+    if a.count(".") >= 4 or (":" in a and "." in a):
+        host, _, port = a.rpartition(".")
+        return host, int(port) if port.isdigit() else None
+    return a, None
+
+def parse_packet(line):
+    m = re.match(r"^(\d+\.\d+) (.*)$", line)
+    if not m:
+        return None
+    ts, rest = float(m.group(1)), m.group(2)
+    length = re.findall(r"length (\d+)", rest) or re.findall(r"\((\d+)\)$", rest)   # DNS lines end in "(29)"
+    row = {"t": ts, "src": "", "dst": "", "proto": "Other", "len": int(length[-1]) if length else None, "info": rest}
+    if rest.startswith("ARP"):
+        row["proto"] = "ARP"
+        a = re.search(r"tell (\S+?),", rest) or re.search(r"Reply (\S+) is-at", rest)
+        row["src"], row["info"] = (a.group(1) if a else ""), rest[5:]
+        return row
+    m = re.match(r"^(IP6?) (\S+) > (\S+?): (.*)$", rest)
+    if not m:
+        row["proto"] = rest.split(",")[0].split(" ")[0][:12] or "Other"
+        return row
+    (src, sp), (dst, dp), info = _split_addr(m.group(2)), _split_addr(m.group(3)), m.group(4)
+    row.update(src=src, dst=dst, info=info)
+    app = APP_PORTS.get(sp) or APP_PORTS.get(dp)
+    if "ICMP" in info:
+        row["proto"] = "ICMPv6" if m.group(1) == "IP6" else "ICMP"
+    elif app:
+        row["proto"] = app
+    elif "Flags [" in info:
+        row["proto"] = "TCP"
+    elif "UDP" in info:
+        row["proto"] = "UDP"
+    elif "igmp" in info.lower():
+        row["proto"] = "IGMP"
+    else:
+        row["proto"] = m.group(1)
+    if sp or dp:
+        row["sport"], row["dport"] = sp, dp
+    return row
+
+def list_captures():
+    out = []
+    if os.path.isdir(CAPDIR):
+        for f in sorted(os.listdir(CAPDIR), reverse=True):
+            if f.endswith(".json"):
+                try:
+                    meta = json.load(open(os.path.join(CAPDIR, f)))
+                    pcap = os.path.join(CAPDIR, f[:-5] + ".pcap")
+                    meta["size"] = os.path.getsize(pcap) if os.path.exists(pcap) else 0
+                    out.append(meta)
+                except Exception:
+                    pass
+    return out
+
+def _capture_reader(proc, cid):
+    for line in proc.stdout:
+        r = parse_packet(line.rstrip("\n"))
+        if not r:
+            continue
+        with CAP_LOCK:
+            if CAP["id"] != cid:
+                break
+            CAP["seq"] += 1
+            r["n"] = CAP["seq"]
+            CAP["rows"].append(r)
+            CAP["protos"][r["proto"]] += 1
+            if r["src"]:
+                CAP["talkers"][r["src"]] += 1
+    err = proc.stderr.read().strip() if proc.stderr else ""
+    proc.wait()
+    with CAP_LOCK:
+        if CAP["id"] == cid:
+            CAP["running"] = False
+            lines = [l for l in err.splitlines() if not re.match(r"^(tcpdump: listening|\d+ packets)", l)]
+            if proc.returncode not in (0, -15) and lines:
+                CAP["error"] = lines[-1][:200]
+            meta = {"id": cid, "ts": CAP["started"], "seconds": round(time.time() - CAP["started"]), "filter": CAP["filter"],
+                    "label": CAP["label"], "packets": CAP["seq"]}
+    try:
+        json.dump(meta, open(os.path.join(CAPDIR, cid + ".json"), "w"))
+        for old in list_captures()[CAP_KEEP:]:          # keep the newest few
+            for ext in (".pcap", ".json"):
+                try: os.remove(os.path.join(CAPDIR, old["id"] + ext))
+                except FileNotFoundError: pass
+    except Exception as e:
+        print("capture save error:", e, flush=True)
+
+def start_capture(d):
+    preset = d.get("preset", "all")
+    if preset == "device":
+        ip = str(d.get("ip", ""))
+        if not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip):
+            raise ValueError("Pick a device to capture.")
+        filt, label = f"host {ip}", f"Device {ip}"
+    elif preset == "custom":
+        filt, label = str(d.get("filter", "")).strip(), "Custom filter"
+        if not CAP_SAFE.match(filt):
+            raise ValueError("That filter has characters tcpdump filters don't use.")
+    else:
+        filt, label = CAP_PRESETS.get(preset, ""), {"all": "Everything the Pi can see", "discovery": "Discovery chatter",
+                                                    "dhcp": "Devices joining (DHCP)", "dns": "Name lookups (DNS)"}.get(preset, preset)
+    secs = min(300, max(5, int(d.get("seconds", 30))))
+    with CAP_LOCK:
+        if CAP["running"]:
+            raise ValueError("A capture is already running.")
+        os.makedirs(CAPDIR, exist_ok=True)
+        cid = time.strftime("%Y%m%d-%H%M%S")
+        cmd = ["tcpdump", "-i", "wlan0", "-n", "-l", "-tt", "-U", "-c", "20000", "-w", os.path.join(CAPDIR, cid + ".pcap"), "--print"]
+        if filt:
+            cmd += ["--", filt]     # "--" so a filter can never be read as a tcpdump option
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        CAP.update(id=cid, proc=proc, running=True, started=time.time(), ends=time.time() + secs, filter=filt, label=label,
+                   seq=0, error=None)
+        CAP["rows"].clear(); CAP["protos"].clear(); CAP["talkers"].clear()
+    threading.Thread(target=_capture_reader, args=(proc, cid), daemon=True).start()
+    threading.Timer(secs, stop_capture, args=(cid,)).start()
+
+def stop_capture(cid=None):
+    with CAP_LOCK:
+        if CAP["running"] and CAP["proc"] and (cid is None or CAP["id"] == cid):
+            CAP["proc"].terminate()
+
+def api_capture(since=0):
+    with CAP_LOCK:
+        rows = [r for r in CAP["rows"] if r["n"] > since][-1000:]
+        return {"running": CAP["running"], "id": CAP["id"], "started": CAP["started"], "ends": CAP["ends"], "filter": CAP["filter"],
+                "label": CAP["label"], "count": CAP["seq"], "error": CAP["error"], "rows": rows,
+                "protos": CAP["protos"].most_common(12), "talkers": CAP["talkers"].most_common(8), "files": list_captures()}
+
 # ---------- history for the range picker ----------
 RANGES = {"24h": (86400, 600), "7d": (7 * 86400, 3600), "30d": (30 * 86400, 4 * 3600)}
 _hist_cache = {}
@@ -1132,6 +1278,15 @@ class H(BaseHTTPRequestHandler):
             self.send(200, json.dumps(api_history(parse_qs(u.query).get("range", ["24h"])[0])))
         elif u.path == "/api/speed":
             self.send(200, json.dumps(api_speed()))
+        elif u.path == "/api/capture":
+            self.send(200, json.dumps(api_capture(int(parse_qs(u.query).get("since", ["0"])[0] or 0))))
+        elif u.path == "/api/capture/file":
+            cid = parse_qs(u.query).get("id", [""])[0]
+            path = os.path.join(CAPDIR, cid + ".pcap")
+            if not re.fullmatch(r"\d{8}-\d{6}", cid) or not os.path.exists(path):
+                return self.send(404, '{"error":"not found"}')
+            self.send(200, open(path, "rb").read(), "application/vnd.tcpdump.pcap",
+                      [("Content-Disposition", f'attachment; filename="homehub-{cid}.pcap"')])
         elif u.path == "/api/alerts":
             self.send(200, json.dumps(api_alerts()))
         elif u.path == "/api/device":
@@ -1190,6 +1345,22 @@ class H(BaseHTTPRequestHandler):
                 conf["speed"] = {"every_h": int(d.get("every_h", SPEED_EVERY)) if int(d.get("every_h", SPEED_EVERY)) in (0, 1, 3, 6, 12, 24) else SPEED_EVERY}
                 save_conf(conf)
                 return self.send(200, json.dumps(api_speed()))
+            if u.path == "/api/capture/start":
+                try:
+                    start_capture(d)
+                except ValueError as e:
+                    return self.send(400, json.dumps({"error": str(e)}))
+                return self.send(200, json.dumps(api_capture()))
+            if u.path == "/api/capture/stop":
+                stop_capture()
+                return self.send(200, "{}")
+            if u.path == "/api/capture/delete":
+                cid = str(d.get("id", ""))
+                if re.fullmatch(r"\d{8}-\d{6}", cid) and cid != (CAP["id"] if CAP["running"] else None):
+                    for ext in (".pcap", ".json"):
+                        try: os.remove(os.path.join(CAPDIR, cid + ext))
+                        except FileNotFoundError: pass
+                return self.send(200, json.dumps({"files": list_captures()}))
             if u.path == "/api/approve_all":
                 with lock, db() as c:
                     n = c.execute("UPDATE devices SET known=1 WHERE known=0").rowcount
