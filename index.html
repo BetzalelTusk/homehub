@@ -180,6 +180,23 @@ a.qtile:hover,button.qtile:hover{background:var(--tile-h);text-decoration:none}
 .range{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-weight:500;color:var(--head)}
 .range .i{color:var(--icon)}
 .icbtn{width:36px;height:36px;border-radius:6px;display:grid;place-items:center;color:var(--icon)}
+/* range picker */
+.rp{position:relative}
+button.range{cursor:pointer}
+button.range:hover{border-color:var(--line)}
+.range .dn{color:var(--sub);margin-left:2px}
+.rmenu{position:absolute;right:0;top:42px;width:190px;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--sh-pop);padding:4px;z-index:15}
+.rmenu button{display:flex;align-items:center;justify-content:space-between;width:100%;height:34px;padding:0 10px;border-radius:6px;font-size:14px;color:var(--fg)}
+.rmenu button:hover{background:var(--hover)}
+.rmenu button.on{font-weight:500;color:var(--head)}
+.rmenu .i{color:var(--cf)}
+/* speed test */
+.speedrow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--border);border-bottom:1px solid var(--border-s);margin-bottom:8px}
+.speedrow>div{padding:12px 16px;border-left:1px solid var(--border-s)}
+.speedrow>div:first-child{border-left:0}
+.speedrow .t{font-size:13px;color:var(--fg)}
+.speedrow .v{font-size:24px;font-weight:500;color:var(--head);letter-spacing:-.01em}
+.speedrow .v small{font-size:13px;color:var(--mut);font-weight:400;margin-left:4px}
 .icbtn:hover{background:var(--hover)}
 
 /* metric cards */
@@ -448,6 +465,7 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
  .snack{left:12px;right:12px;bottom:12px;min-width:0}
  .menu{right:8px;left:8px;width:auto}
  .trow{grid-template-columns:minmax(0,1fr) 30% 30px}
+ .speedrow{grid-template-columns:1fr 1fr}.speedrow>div:nth-child(3){border-left:0}.speedrow>div:nth-child(n+3){border-top:1px solid var(--border-s)}
 }
 </style></head>
 <body>
@@ -572,7 +590,7 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
           <div class="quick" id="ovQuick"></div>
         </div>
         <div id="ovBanner"></div>
-        <div class="sech"><h2>Analytics</h2><span class="sp"></span><span class="range"><svg class="i"><use href="#i-calendar"/></svg>Last 24 hours</span><button class="icbtn" onclick="load(true)" title="Refresh"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+        <div class="sech"><h2>Analytics</h2><span class="sp"></span><div class="rpick"></div><button class="icbtn" onclick="load(true)" title="Refresh"><svg class="i"><use href="#i-refresh"/></svg></button></div>
         <div class="grid g11" id="ovBig"></div>
         <div class="grid g4 mt" id="ovSmall"></div>
         <div class="grid g11 mt">
@@ -603,11 +621,17 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 
       <!-- INTERNET -->
       <section class="view" id="v-internet">
+        <div class="sech" style="margin:0 0 14px"><span class="cap" id="netRangeCap"></span><span class="sp"></span><div class="rpick"></div></div>
         <div id="netAlert"></div>
         <div class="grid g4" id="netStats"></div>
-        <div class="card mt"><div class="card-h"><div><div class="h6">Response time</div><div class="cap">Average every 10 minutes over the last 24 hours. Red marks show when the connection dropped.</div></div></div>
+        <div class="card mt"><div class="card-h"><div><div class="h6">Response time</div><div class="cap" id="netChartCap">Red marks show when the connection dropped.</div></div></div>
           <div class="chart" id="chartNet"></div><div class="legend"><span><i style="background:var(--chart)"></i>Response time (ms)</span><span><i style="background:var(--err)"></i>Connection dropped</span></div></div>
-        <div class="card mt"><div class="card-h"><div><div class="h6">Outages</div><div class="cap">Times the internet stopped working in the last 7 days</div></div></div><div class="tw"><table><thead><tr><th>When</th><th>How long</th><th>Status</th></tr></thead><tbody id="outBody"></tbody></table></div></div>
+        <div class="card mt"><div class="card-h"><div><div class="h6">Speed test</div><div class="cap" id="spCap">Cloudflare speed test over the Pi's Wi-Fi</div></div><span class="sp"></span>
+          <select class="fsel" id="spEvery" style="width:auto;height:32px" title="How often to test automatically"><option value="0">Only when I ask</option><option value="1">Every hour</option><option value="3">Every 3 hours</option><option value="6">Every 6 hours</option><option value="12">Every 12 hours</option><option value="24">Once a day</option></select>
+          <button class="btn ct sm" id="spRun">Run now</button></div>
+          <div class="speedrow" id="spRow"></div>
+          <div class="chart" id="chartSpeed"></div><div class="legend"><span><i style="background:var(--chart)"></i>Download (Mbps)</span><span><i style="background:var(--s1)"></i>Upload (Mbps)</span><span>Measured over the Pi's Wi-Fi, so it's the speed a Wi-Fi device gets here, which can be less than your plan.</span></div></div>
+        <div class="card mt"><div class="card-h"><div><div class="h6">Outages</div><div class="cap" id="outCap">Times the internet stopped working</div></div></div><div class="tw"><table><thead><tr><th>When</th><th>How long</th><th>Status</th></tr></thead><tbody id="outBody"></tbody></table></div></div>
       </section>
 
       <!-- ACTIVITY -->
@@ -681,6 +705,8 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ic=(n,cls='i')=>`<svg class="${cls}"><use href="#i-${n}"/></svg>`;
+const RLBL={'24h':'Last 24 hours','7d':'Last 7 days','30d':'Last 30 days'},RSTEP={'24h':'every 10 minutes','7d':'every hour','30d':'every 4 hours'};
+let RANGE=(()=>{try{return RLBL[localStorage.getItem('range')]?localStorage.getItem('range'):'24h'}catch(e){return'24h'}})(),H={};
 let S=null,DV=null,filter='all',view='overview',devMac=null,devTab=null,pingRes=null,PR=null,PRdays=14,PRshort=false;
 const NOW=()=>Date.now()/1000;
 const ago=t=>{if(!t)return'never';const s=NOW()-t;return s<90?'just now':s<5400?Math.round(s/60)+' min ago':s<172800?Math.round(s/3600)+' hr ago':Math.round(s/86400)+' days ago'};
@@ -813,17 +839,17 @@ function draw(){
  else if(alertsOff)bn={t:'Get alerts on your phone',d:'Hear about new devices, internet outages and watched devices going offline, through the free ntfy app or Telegram.',b:['Set up','#settings']};
  $('#ovBanner').innerHTML=bn?`<div class="frame banner"><div class="inner"><div class="art ${bn.cls||''}"></div><div class="txt"><b>${esc(bn.t)}</b><span>${esc(bn.d)}</span></div><div class="go"><a class="btn ct" href="${bn.b[1]}"${bn.f?` onclick="filter='new'"`:''}>${bn.b[0]}</a></div></div></div>`:'';
 
- /* analytics */
- const os=S.online_series||[],prevN=os.length>48?os[os.length-49].n:null;
+ /* analytics, for the picked range */
+ const h=H[RANGE],hi=h?h.internet:null,ho=h?h.online:[],sp=S.speed&&S.speed.last,rl=RLBL[RANGE].toLowerCase().replace('last ','');
+ const startN=(ho.find(p=>p.n!=null)||{}).n,outsR=hi?hi.outages:[];
  $('#ovBig').innerHTML=
-  `<a class="card metric" href="#internet"><div class="mh"><span>Internet response time</span><span class="cap">24 h average</span></div><div class="mvrow"><span class="mv">${net.avg_ms==null?'—':net.avg_ms.toFixed(1)+' ms'}</span>${delta(net.avg_ms,net.avg_prev,true)}</div><div class="mchart" id="mcNet"></div></a>`+
-  `<a class="card metric" href="#devices"><div class="mh"><span>Devices online</span><span class="cap">right now</span></div><div class="mvrow"><span class="mv">${online.length}</span>${delta(online.length,prevN,false,true)}</div><div class="mchart" id="mcDev"></div></a>`;
- const longest=outs.reduce((a,o)=>Math.max(a,(o.end||S.now)-o.start),0);
+  `<a class="card metric" href="#internet"><div class="mh"><span>Internet response time</span><span class="cap">average</span></div><div class="mvrow"><span class="mv">${hi&&hi.avg!=null?hi.avg.toFixed(1)+' ms':'—'}</span>${hi?delta(hi.avg,hi.avg_prev,true):''}</div><div class="mchart" id="mcNet"></div></a>`+
+  `<a class="card metric" href="#devices"><div class="mh"><span>Devices online</span><span class="cap">right now</span></div><div class="mvrow"><span class="mv">${online.length}</span>${delta(online.length,startN,false,true)}</div><div class="mchart" id="mcDev"></div></a>`;
  $('#ovSmall').innerHTML=
-  statCard('Reliability',up==null?'—':up.toFixed(2)+'%',delta(up,net.uptime_prev,false)||'of checks, last 24 h')+
-  statCard('Outages',outs.length,outs.length?'longest '+dur(longest):'none in the last 24 h')+
+  statCard('Reliability',hi&&hi.uptime!=null?hi.uptime.toFixed(2)+'%':'—',`${hi?delta(hi.uptime,hi.uptime_prev,false):''} ${outsR.length?outsR.length+' outage'+(outsR.length>1?'s':''):'no outages'}`)+
+  statCard('Speed',sp?`${sp.down.toFixed(0)} Mbps`:'—',sp?`${sp.up.toFixed(0)} up · ${sp.ping.toFixed(0)} ms · ${ago(sp.ts)}`:S.speed&&S.speed.running?'testing now…':'<a href="#internet">run a speed test</a>')+
   statCard('People home',people.length?`${home.length} / ${people.length}`:'—',people.length?'tracked phones':'<a href="#devices">pick phones to track</a>')+
-  statCard('New devices',S.new_24h??0,`joined in 24 h ${delta(S.new_24h,S.new_prev,true,true)}`);
+  statCard('New devices',h?h.new:'—',`joined in ${rl} ${h?delta(h.new,h.new_prev,true,true):''}`);
  const types={};D.forEach(d=>{const n=kind(d).name;types[n]=(types[n]||0)+1});
  const tl=Object.entries(types).sort((a,b)=>b[1]-a[1]).slice(0,7),tmax=tl.length?tl[0][1]:1;
  $('#ovTypes').innerHTML=tl.map(([n,c])=>`<div class="trow"><a href="#devices" data-type="${esc(n)}" onclick="typeSearch(this.dataset.type)">${esc(n)}</a><div class="tbar"><i style="width:${(c/tmax*100).toFixed(1)}%"></i></div><span>${c}</span></div>`).join('');
@@ -839,14 +865,18 @@ function draw(){
  $('#netStats').innerHTML=
   statCard('Status',net.up?'Working':'Down',net.up?'connected to the internet':'no response')+
   statCard('Response time',net.ms==null?'—':net.ms.toFixed(0)+' ms','right now')+
-  statCard('Average today',net.avg_ms==null?'—':net.avg_ms.toFixed(1)+' ms',delta(net.avg_ms,net.avg_prev,true)||'under 50 ms is great')+
-  statCard('Reliability',up==null?'—':up.toFixed(2)+'%',delta(up,net.uptime_prev,false)||'of checks succeeded today');
- $('#outBody').innerHTML=net.outages.length?net.outages.map(o=>`<tr><td>${fmt(o.start)}<div class="cap">${ago(o.start)}</div></td><td>${o.end?dur(o.end-o.start):'still going'}</td><td>${o.end?'<span class="chip ok">Back online</span>':'<span class="chip err">Ongoing</span>'}</td></tr>`).join(''):
-  `<tr><td colspan="3"><div class="empty">${ic('check')}No outages in the last 7 days. Nice.</div></td></tr>`;
+  statCard('Average',hi&&hi.avg!=null?hi.avg.toFixed(1)+' ms':'—',(hi?delta(hi.avg,hi.avg_prev,true):'')||rl)+
+  statCard('Reliability',hi&&hi.uptime!=null?hi.uptime.toFixed(2)+'%':'—',(hi?delta(hi.uptime,hi.uptime_prev,false):'')||'of checks succeeded');
+ $('#netRangeCap').textContent=`Showing the ${RLBL[RANGE].toLowerCase()}`;
+ $('#netChartCap').textContent=`Average ${RSTEP[RANGE]} over the ${RLBL[RANGE].toLowerCase()}. Red marks show when the connection dropped.`;
+ $('#outCap').textContent=`Times the internet stopped working in the ${RLBL[RANGE].toLowerCase()}`;
+ $('#outBody').innerHTML=outsR.length?outsR.map(o=>`<tr><td>${fmt(o.start)}<div class="cap">${ago(o.start)}</div></td><td>${o.end?dur(o.end-o.start):'still going'}</td><td>${o.end?'<span class="chip ok">Back online</span>':'<span class="chip err">Ongoing</span>'}</td></tr>`).join(''):
+  `<tr><td colspan="3"><div class="empty">${ic('check')}No outages in the ${RLBL[RANGE].toLowerCase()}. Nice.</div></td></tr>`;
+ const hs=h?h.step:600,t0=h?h.t0:S.now-86400,t1=h?h.t1:S.now,netPts=hi?hi.series.map(p=>({t:p.t+hs/2,v:p.ms,loss:p.loss})):[];
  if(view==='overview'){
-  lineChart($('#mcNet'),net.series.map(p=>({t:p.t+300,v:p.ms,loss:p.loss})),{H:170,t0:S.now-86400,t1:S.now,unit:' ms',drops:true});
-  lineChart($('#mcDev'),os.slice(-48).map(p=>({t:p.t+900,v:p.n})),{H:170,t0:S.now-86400,t1:S.now,unit:' online',int:true})}
- if(view==='internet')lineChart($('#chartNet'),net.series.map(p=>({t:p.t+300,v:p.ms,loss:p.loss})),{H:280,t0:S.now-86400,t1:S.now,unit:' ms',drops:true,xlabels:true});
+  lineChart($('#mcNet'),netPts,{H:170,t0,t1,unit:' ms',drops:true,step:hs});
+  lineChart($('#mcDev'),ho.map(p=>({t:p.t+hs/2,v:p.n})),{H:170,t0,t1,unit:' online',int:true,step:hs})}
+ if(view==='internet'){lineChart($('#chartNet'),netPts,{H:280,t0,t1,unit:' ms',drops:true,xlabels:true,step:hs});drawSpeed()}
 
  /* devices */
  const watched=D.filter(d=>d.watch);
@@ -1167,66 +1197,68 @@ $('#pwForm').onsubmit=async e=>{e.preventDefault();
  try{await api('/api/password',{current:$('#pwCur').value,new:$('#pwNew').value});snack('Password updated');e.target.reset()}
  catch(err){snack(err.message,'err')}};
 
-/* Cloudflare-style line chart: thin blue line, soft fill, y labels on the right */
+/* Cloudflare-style line chart: thin lines, soft fill under the first series, y labels on the right.
+   o: {H,t0,t1,unit,int,drops,xlabels,dots,label,step,extra:[{pts,color:'--var',label}]} */
 function lineChart(el,pts,o){
  if(!el)return;
  const cs=getComputedStyle(el),W=Math.max(260,el.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)),H=o.H;
  const css=getComputedStyle(root),c=v=>css.getPropertyValue(v).trim();
- const vals=pts.map(p=>p.v).filter(v=>v!=null);
- if(vals.length<2){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}"></svg><span class="nodata">No data yet</span>`;return}
- const P={l:2,r:30,t:8,b:o.xlabels?24:6},w=W-P.l-P.r,h=H-P.t-P.b,t0=o.t0,t1=o.t1;
+ const series=[{pts,color:c('--chart'),label:o.label}].concat((o.extra||[]).map(e=>({pts:e.pts,color:c(e.color),label:e.label})));
+ const vals=series.flatMap(s=>s.pts.map(p=>p.v)).filter(v=>v!=null);
+ if(vals.length<(o.dots?1:2)){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}"></svg><span class="nodata">${o.dots?'No tests in this period yet':'No data yet'}</span>`;return}
+ const P={l:2,r:30,t:8,b:o.xlabels?24:6},w=W-P.l-P.r,h=H-P.t-P.b,t0=o.t0,t1=o.t1,span=t1-t0;
  const top=Math.max(...vals)*1.15,mx=o.int?Math.max(4,Math.ceil(top/4)*4):Math.max(20,Math.ceil(top/20)*20);
- const X=t=>P.l+(t-t0)/(t1-t0)*w,Y=v=>P.t+h-v/mx*h,col=c('--chart');
+ const X=t=>P.l+(t-t0)/span*w,Y=v=>P.t+h-v/mx*h;
+ const xl=t=>{const d=new Date(t*1000);return span>3*86400?d.toLocaleDateString([], {month:'short',day:'numeric'}):span>1.5*86400?d.toLocaleDateString([], {weekday:'short'}):d.toLocaleTimeString([], {hour:'numeric'})};
+ const tl=t=>new Date(t*1000).toLocaleString([],span>1.5*86400?{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}:{hour:'numeric',minute:'2-digit'});
  let g='';
  for(let i=0;i<=4;i++){const v=mx*i/4,y=Y(v).toFixed(1);g+=`<line x1="${P.l}" x2="${P.l+w}" y1="${y}" y2="${y}" stroke="${c('--border-s')}"/><text x="${W-2}" y="${+y+4}" text-anchor="end" font-size="11" fill="${c('--sub')}">${Math.round(v)}</text>`}
- if(o.xlabels)for(let i=0;i<=4;i++){const t=t0+(t1-t0)*i/4;g+=`<text x="${X(t).toFixed(1)}" y="${H-6}" text-anchor="${i==0?'start':i==4?'end':'middle'}" font-size="11" fill="${c('--sub')}">${new Date(t*1000).toLocaleTimeString([], {hour:'numeric'})}</text>`}
- if(o.drops){const bw=Math.max(3,600/(t1-t0)*w);pts.filter(p=>p.loss>0.2).forEach(p=>g+=`<rect x="${X(p.t-300).toFixed(1)}" y="${P.t}" width="${bw}" height="${h}" fill="${c('--err')}" opacity=".12"/><rect x="${X(p.t-300).toFixed(1)}" y="${P.t+h-3}" width="${bw}" height="3" fill="${c('--err')}"/>`)}
- // line and soft fill, broken wherever there's no data
- let seg=[];const segs=[];pts.forEach(p=>{if(p.v==null){if(seg.length)segs.push(seg);seg=[]}else seg.push(p)});if(seg.length)segs.push(seg);
- for(const s of segs){const d=s.map((p,i)=>`${i?'L':'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join('');
-  if(s.length>1)g+=`<path d="${d}L${X(s[s.length-1].t).toFixed(1)},${P.t+h}L${X(s[0].t).toFixed(1)},${P.t+h}Z" fill="${c('--chart-f')}"/>`;
-  g+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`}
- g+=`<line class="hl" y1="${P.t}" y2="${P.t+h}" stroke="${c('--line')}" style="display:none"/><circle class="hc" r="3.5" fill="${col}" stroke="${c('--surface')}" stroke-width="2" style="display:none"/>`;
+ if(o.xlabels)for(let i=0;i<=4;i++){const t=t0+span*i/4;g+=`<text x="${X(t).toFixed(1)}" y="${H-6}" text-anchor="${i==0?'start':i==4?'end':'middle'}" font-size="11" fill="${c('--sub')}">${xl(t)}</text>`}
+ if(o.drops){const st=o.step||600,bw=Math.max(3,st/span*w);pts.filter(p=>p.loss>0.2).forEach(p=>g+=`<rect x="${X(p.t-st/2).toFixed(1)}" y="${P.t}" width="${bw.toFixed(1)}" height="${h}" fill="${c('--err')}" opacity=".12"/><rect x="${X(p.t-st/2).toFixed(1)}" y="${P.t+h-3}" width="${bw.toFixed(1)}" height="3" fill="${c('--err')}"/>`)}
+ series.forEach((sr,si)=>{  // each series: line broken wherever there's no data; soft fill under the first
+  let seg=[];const segs=[];sr.pts.forEach(p=>{if(p.v==null){if(seg.length)segs.push(seg);seg=[]}else seg.push(p)});if(seg.length)segs.push(seg);
+  for(const sg of segs){const d=sg.map((p,i)=>`${i?'L':'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join('');
+   if(si===0&&!o.dots&&sg.length>1)g+=`<path d="${d}L${X(sg[sg.length-1].t).toFixed(1)},${P.t+h}L${X(sg[0].t).toFixed(1)},${P.t+h}Z" fill="${c('--chart-f')}"/>`;
+   g+=`<path d="${d}" fill="none" stroke="${sr.color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+   if(o.dots)sg.forEach(p=>g+=`<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3" fill="${sr.color}" stroke="${c('--surface')}" stroke-width="1.5"/>`)}});
+ g+=`<line class="hl" y1="${P.t}" y2="${P.t+h}" stroke="${c('--line')}" style="display:none"/>`+series.map(sr=>`<circle class="hc" r="3.5" fill="${sr.color}" stroke="${c('--surface')}" stroke-width="2" style="display:none"/>`).join('');
  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}</svg><div class="tip"></div>`;
- const svg=el.querySelector('svg'),tip=el.querySelector('.tip'),hl=el.querySelector('.hl'),hc=el.querySelector('.hc');
- const hide=()=>{tip.style.display=hl.style.display=hc.style.display='none'};
+ const svg=el.querySelector('svg'),tip=el.querySelector('.tip'),hl=el.querySelector('.hl'),hcs=[...el.querySelectorAll('.hc')];
+ const hide=()=>{tip.style.display=hl.style.display='none';hcs.forEach(x=>x.style.display='none')};
+ const near=(arr,t)=>{let b=null;for(const p of arr)if(!b||Math.abs(p.t-t)<Math.abs(b.t-t))b=p;return b};
  svg.onmousemove=svg.ontouchmove=svg.ontouchstart=ev=>{const r=svg.getBoundingClientRect(),cx=((ev.touches?ev.touches[0].clientX:ev.clientX)-r.left)*W/r.width;
-  const t=t0+(cx-P.l)/w*(t1-t0);let best=null;for(const p of pts)if(!best||Math.abs(p.t-t)<Math.abs(best.t-t))best=p;
+  const best=near(series[0].pts.length?series[0].pts:series.flatMap(s=>s.pts),t0+(cx-P.l)/w*span);
   if(!best||cx<P.l||cx>P.l+w)return hide();
   const x=X(best.t);hl.setAttribute('x1',x);hl.setAttribute('x2',x);hl.style.display='';
-  if(best.v!=null){hc.setAttribute('cx',x);hc.setAttribute('cy',Y(best.v));hc.style.display=''}else hc.style.display='none';
-  tip.style.display='block';tip.style.left=Math.min(Math.max(x*r.width/W,70),r.width-70)+'px';tip.style.top='6px';tip.style.transform='translateX(-50%)';
-  tip.innerHTML=`${new Date(best.t*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}<br><b>${best.v==null?'No data':(o.int?best.v:best.v.toFixed(0))+(o.unit||'')}</b>${best.loss>0.05?` · ${(best.loss*100).toFixed(0)}% dropped`:''}`};
+  const rows=series.map((sr,i)=>{const p=near(sr.pts,best.t),ok=p&&p.v!=null&&Math.abs(p.t-best.t)<=(o.step||span/40);
+   if(ok){hcs[i].setAttribute('cx',x);hcs[i].setAttribute('cy',Y(p.v));hcs[i].style.display=''}else hcs[i].style.display='none';
+   return ok?`${sr.label?sr.label+': ':''}<b>${o.int?p.v:p.v.toFixed(0)}${o.unit||''}</b>`:''}).filter(Boolean);
+  tip.style.display='block';tip.style.left=Math.min(Math.max(x*r.width/W,80),r.width-80)+'px';tip.style.top='6px';tip.style.transform='translateX(-50%)';
+  tip.innerHTML=`${tl(best.t)}<br>${rows.join('<br>')||'<b>No data</b>'}${best.loss>0.05?` · ${(best.loss*100).toFixed(0)}% dropped`:''}`};
  svg.onmouseleave=hide;
 }
-function chart(sel,H){
- const el=$(sel),W=Math.max(300,el.clientWidth-32||600),ser=S.internet.series;
- if(ser.length<2){el.innerHTML=`<div class="empty">${ic('history')}Collecting data. The chart fills in over the first hour.</div>`;return}
- const P={l:36,r:6,t:10,b:24},w=W-P.l-P.r,h=H-P.t-P.b,t1=S.now,t0=t1-86400;
- const vals=ser.map(p=>p.ms).filter(v=>v!=null),mx=Math.max(40,Math.ceil(Math.max(...vals,0)*1.15/10)*10);
- const X=t=>P.l+(t-t0)/86400*w,Y=v=>P.t+h-v/mx*h;
- const css=getComputedStyle(root),c=n=>css.getPropertyValue(n).trim();
- let g=`<defs><linearGradient id="gf${sel.slice(1)}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c('--chart')}" stop-opacity=".3"/><stop offset="1" stop-color="${c('--chart')}" stop-opacity="0"/></linearGradient></defs>`;
- for(let i=0;i<=4;i++){const v=mx*i/4,y=Y(v);g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${y}" y2="${y}" stroke="${c('--div')}" ${i?'stroke-dasharray="3 3"':''}/><text x="${P.l-8}" y="${y+4}" text-anchor="end" font-size="11" fill="${c('--mut')}">${Math.round(v)}</text>`}
- for(let i=0;i<=4;i++){const t=t0+86400*i/4;g+=`<text x="${X(t)}" y="${H-6}" text-anchor="${i==0?'start':i==4?'end':'middle'}" font-size="11" fill="${c('--mut')}">${new Date(t*1000).toLocaleTimeString([], {hour:'numeric'})}</text>`}
- const bw=Math.max(3,600/86400*w);
- ser.filter(p=>p.loss>0.2).forEach(p=>g+=`<rect x="${X(p.t)}" y="${P.t}" width="${bw}" height="${h}" fill="${c('--err')}" opacity=".18"/><rect x="${X(p.t)}" y="${P.t+h-4}" width="${bw}" height="4" fill="${c('--err')}"/>`);
- const pts=ser.filter(p=>p.ms!=null);
- if(pts.length){const line=pts.map((p,i)=>`${i?'L':'M'}${X(p.t+300).toFixed(1)},${Y(p.ms).toFixed(1)}`).join('');
-  g+=`<path d="${line}L${X(pts[pts.length-1].t+300).toFixed(1)},${P.t+h}L${X(pts[0].t+300).toFixed(1)},${P.t+h}Z" fill="url(#gf${sel.slice(1)})"/><path d="${line}" fill="none" stroke="${c('--chart')}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`}
- g+=`<line class="hl" y1="${P.t}" y2="${P.t+h}" stroke="${c('--mut')}" stroke-dasharray="3 3" style="display:none"/><circle class="hc" r="4" fill="${c('--chart')}" stroke="${c('--paper')}" stroke-width="2" style="display:none"/>`;
- el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}</svg><div class="tip"></div>`;
- const svg=el.querySelector('svg'),tip=el.querySelector('.tip'),hl=el.querySelector('.hl'),hc=el.querySelector('.hc');
- const hide=()=>{tip.style.display=hl.style.display=hc.style.display='none'};
- svg.onmousemove=svg.ontouchmove=svg.ontouchstart=ev=>{const r=svg.getBoundingClientRect(),cx=((ev.touches?ev.touches[0].clientX:ev.clientX)-r.left)*W/r.width;
-  const t=t0+(cx-P.l)/w*86400;let best=null;for(const p of ser)if(!best||Math.abs(p.t+300-t)<Math.abs(best.t+300-t))best=p;
-  if(!best||cx<P.l)return hide();
-  const x=X(best.t+300);hl.setAttribute('x1',x);hl.setAttribute('x2',x);hl.style.display='';
-  if(best.ms!=null){hc.setAttribute('cx',x);hc.setAttribute('cy',Y(best.ms));hc.style.display=''}else hc.style.display='none';
-  tip.style.display='block';tip.style.left=(x*r.width/W+16)+'px';tip.style.top='18px';
-  tip.innerHTML=`${new Date((best.t+300)*1000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}<br><b>${best.ms==null?'No connection':best.ms.toFixed(0)+' ms'}</b>${best.loss>0.05?` · ${(best.loss*100).toFixed(0)}% dropped`:''}`};
- svg.onmouseleave=hide;
-}
+
+/* range picker */
+function drawRangePickers(){document.querySelectorAll('.rpick').forEach(el=>{el.innerHTML=`<div class="rp"><button class="range" onclick="toggleRange(this,event)">${ic('calendar')}<span>${RLBL[RANGE]}</span>${ic('chev-down','i dn')}</button><div class="rmenu" hidden>${Object.keys(RLBL).map(k=>`<button class="${k===RANGE?'on':''}" onclick="setRange('${k}')">${RLBL[k]}${k===RANGE?ic('check'):''}</button>`).join('')}</div></div>`})}
+function toggleRange(b,e){e.stopPropagation();const m=b.nextElementSibling,open=m.hidden;document.querySelectorAll('.rmenu').forEach(x=>x.hidden=true);m.hidden=!open}
+function setRange(k){RANGE=k;try{localStorage.setItem('range',k)}catch(e){}drawRangePickers();draw();loadHist()}
+async function loadHist(){const r=RANGE;try{H[r]=await api('/api/history?range='+r);if(r===RANGE)draw()}catch(e){}}
+
+/* speed test */
+let SPD=null,spT;
+async function loadSpeed(){const was=SPD&&SPD.running;try{SPD=await api('/api/speed');drawSpeed();clearTimeout(spT);
+ if(SPD.running)spT=setTimeout(loadSpeed,2000);else if(was){load();loadHist();snack('Speed test finished')}}catch(e){}}
+function drawSpeed(){if(!SPD||!$('#spRow'))return;const l=SPD.last,h=H[RANGE];
+ const PH={starting:'Starting…',latency:'Measuring latency…',download:'Testing download…',upload:'Testing upload…'};
+ $('#spCap').textContent=SPD.running?(PH[SPD.phase]||'Testing…'):(l?`Last test ${ago(l.ts)} · `:'Not tested yet · ')+'Cloudflare speed test over the Pi\'s Wi-Fi';
+ $('#spRun').disabled=SPD.running;$('#spRun').innerHTML=SPD.running?'<span class="spin"></span>Testing…':'Run now';
+ if(document.activeElement!==$('#spEvery'))$('#spEvery').value=String(SPD.every_h);
+ const cell=(t,v,u)=>`<div><div class="t">${t}</div><div class="v">${v==null?'—':v.toFixed(v<10?1:0)}<small>${u}</small></div></div>`;
+ $('#spRow').innerHTML=cell('Download',l&&l.down,'Mbps')+cell('Upload',l&&l.up,'Mbps')+cell('Latency',l&&l.ping,'ms')+cell('Jitter',l&&l.jitter,'ms');
+ const sp=(h&&h.speed)||[];
+ if(view==='internet')lineChart($('#chartSpeed'),sp.map(p=>({t:p.ts,v:p.down})),{H:200,t0:h?h.t0:NOW()-86400,t1:h?h.t1:NOW(),unit:' Mbps',xlabels:true,dots:true,label:'Download',extra:[{pts:sp.map(p=>({t:p.ts,v:p.up})),color:'--s1',label:'Upload'}]})}
+$('#spRun').onclick=async()=>{try{SPD=await api('/api/speed/run',{});drawSpeed();clearTimeout(spT);spT=setTimeout(loadSpeed,1500)}catch(e){snack(e.message,'err')}};
+$('#spEvery').onchange=async e=>{const v=+e.target.value;try{SPD=await api('/api/speed/settings',{every_h:v});drawSpeed();snack(v?`Speed test ${v===24?'once a day':'every '+v+(v>1?' hours':' hour')}`:'Automatic speed tests turned off')}catch(err){snack(err.message,'err')}};
 /* supergraphics: a sweep of concentric stripes (top-right), a hatched globe (bottom-left), a halftone field and a double rule.
    Drawn once per size and theme; kept quieter than on the wall display because this page has more text on the canvas. */
 let sgKey='';
@@ -1256,13 +1288,13 @@ $('#collapse').onclick=()=>{const m=app.classList.toggle('mini');try{localStorag
 $('#menuBtn').onclick=()=>app.classList.toggle('open');
 $('#scrim').onclick=()=>app.classList.remove('open');
 $('#profBtn').onclick=e=>{e.stopPropagation();const m=$('#profMenu');m.hidden=!m.hidden};
-document.addEventListener('click',e=>{if(!e.target.closest('#profMenu'))$('#profMenu').hidden=true});
+document.addEventListener('click',e=>{if(!e.target.closest('#profMenu'))$('#profMenu').hidden=true;if(!e.target.closest('.rp'))document.querySelectorAll('.rmenu').forEach(m=>m.hidden=true)});
 $('#profMenu').addEventListener('click',e=>{if(e.target.closest('a'))$('#profMenu').hidden=true});
 $('#hq').oninput=()=>{$('#q').value=$('#hq').value;if(view!=='devices')location.hash='#devices';else draw()};
 $('#q').addEventListener('input',()=>{$('#hq').value=$('#q').value});
 $('#bigq').oninput=()=>{const v=$('#bigq').value;$('#q').value=$('#hq').value=v;$('#bigq').value='';location.hash='#devices';
  setTimeout(()=>{const q=$('#q');q.focus();q.setSelectionRange(v.length,v.length)},30)};
 addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();const t=view==='overview'?$('#bigq'):innerWidth>900?$('#hq'):$('#q');if(t)t.focus()}});
-route();load();setInterval(load,15000);loadAlerts();supergraphics();
+drawRangePickers();route();load();setInterval(load,15000);loadAlerts();supergraphics();loadHist();setInterval(loadHist,60000);loadSpeed();
 </script>
 </body></html>

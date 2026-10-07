@@ -49,6 +49,10 @@ def init():
         CREATE INDEX IF NOT EXISTS events_mac ON events(mac);
         CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
         CREATE TABLE IF NOT EXISTS leases(ip TEXT PRIMARY KEY, mac TEXT, ts REAL, hostname TEXT);
+        CREATE TABLE IF NOT EXISTS ping_hours(t INTEGER PRIMARY KEY, n INTEGER, ok INTEGER, ms_sum REAL, ms_n INTEGER);
+        CREATE TABLE IF NOT EXISTS speedtests(id INTEGER PRIMARY KEY, ts REAL, down REAL, up REAL, ping REAL, jitter REAL, err TEXT);
+        CREATE INDEX IF NOT EXISTS pings_ts ON pings(ts);
+        CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
         """)
         have = {r[1] for r in c.execute("PRAGMA table_info(devices)")}
         for col, typ in [("vendor", "TEXT"), ("notes", "TEXT"), ("info", "TEXT"),
@@ -500,8 +504,18 @@ def ping(host):
     m = re.search(r"time=([\d.]+) ms", r.stdout)
     return float(m.group(1)) if m else None
 
+def aggregate_pings(c, since=None):
+    """Roll raw pings up into hourly rows (kept for a year; raw pings are kept for 8 days). Redoes the last full hour
+    and the current partial one, so long-range charts are never more than a few minutes behind."""
+    if since is None:
+        last = c.execute("SELECT MAX(t) FROM ping_hours").fetchone()[0]
+        since = (last - 3600) if last else 0
+    c.execute("""INSERT OR REPLACE INTO ping_hours(t, n, ok, ms_sum, ms_n)
+                 SELECT CAST(ts/3600 AS INT)*3600 AS h, COUNT(*), SUM(ok), SUM(ms), COUNT(ms) FROM pings WHERE ts>=? GROUP BY h""", (since,))
+    c.execute("DELETE FROM ping_hours WHERE t < ?", (time.time() - 400 * 86400,))
+
 def ping_loop():
-    fails, outage_id = 0, None
+    fails, outage_id, rounds = 0, None, 0
     while True:
         try:
             ms = None
@@ -512,7 +526,10 @@ def ping_loop():
             now = time.time()
             with lock, db() as c:
                 c.execute("INSERT INTO pings VALUES(?,?,?)", (now, 1 if ms is not None else 0, ms))
-                c.execute("DELETE FROM pings WHERE ts < ?", (now - 7 * 86400,))
+                c.execute("DELETE FROM pings WHERE ts < ?", (now - 8 * 86400,))
+                rounds += 1
+                if rounds % 60 == 1:   # every 10 minutes
+                    aggregate_pings(c)
                 if ms is None:
                     fails += 1
                     if fails == FAILS_FOR_OUTAGE and outage_id is None:
@@ -600,6 +617,7 @@ def digest_text(now):
         n_new = c.execute("SELECT COUNT(*) FROM events WHERE kind='new' AND ts>?", (day,)).fetchone()[0]
         p = c.execute("SELECT COUNT(*) n, SUM(ok) ok, AVG(ms) avg FROM pings WHERE ts>?", (day,)).fetchone()
         outs = c.execute("SELECT start, COALESCE(end, ?) e FROM outages WHERE COALESCE(end, ?)>?", (now, now, day)).fetchall()
+        sp = c.execute("SELECT down, up, ping FROM speedtests WHERE err IS NULL AND ts>? ORDER BY ts DESC LIMIT 1", (day,)).fetchone()
     seen = sum(1 for d in devs if (d["last_seen"] or 0) > day)
     online = sum(1 for d in devs if now - (d["last_seen"] or 0) <= (AWAY_AFTER if d["is_person"] else OFFLINE_AFTER))
     unknown = [dev_label(d) for d in devs if not d["known"]]
@@ -612,6 +630,8 @@ def digest_text(now):
         up = (p["ok"] or 0) / p["n"] * 100
         lines.append(f"Internet: {up:.1f}% up, {p['avg'] or 0:.0f} ms average" +
                      (f", {len(outs)} outage{'s' if len(outs) > 1 else ''} ({fmt_dur(sum(o['e'] - max(o['start'], day) for o in outs))} total)." if outs else ", no outages."))
+    if sp:
+        lines.append(f"Speed (over the Pi's Wi-Fi): {sp['down']:.0f} Mbps down, {sp['up']:.0f} up, {sp['ping']:.0f} ms.")
     if down: lines.append(f"Watched devices offline: {', '.join(down)}.")
     if any(d["is_person"] for d in devs): lines.append(f"Home now: {', '.join(home) if home else 'nobody'}.")
     return "\n".join(lines)
@@ -652,6 +672,148 @@ def notify_loop():
         except Exception as e:
             print("notify error:", e, flush=True)
             time.sleep(30)
+
+# ---------- speed test (Cloudflare's speed.cloudflare.com) ----------
+SPEED_EVERY = 6          # default hours between automatic tests (0 = only when asked)
+SPEED = {"running": False, "phase": None}
+SPEED_LOCK = threading.Lock()
+
+def claim_speed_test():
+    """Mark a test as running; False if one already is. Callers then run speed_test()."""
+    with SPEED_LOCK:
+        if SPEED["running"]:
+            return False
+        SPEED.update(running=True, phase="starting")
+        return True
+
+def speed_test():
+    """Latency, download and upload against speed.cloudflare.com, like its web speed test (about 50 MB of traffic).
+    The Pi is on Wi-Fi, so this is the speed a Wi-Fi device gets here rather than the plan's full speed."""
+    import http.client, statistics
+    SPEED["phase"] = "latency"
+    res = {"ts": time.time(), "down": None, "up": None, "ping": None, "jitter": None, "err": None}
+    try:
+        conn = http.client.HTTPSConnection("speed.cloudflare.com", timeout=30)
+        lat, raw = [], []
+        for i in range(11):   # the first request also sets up TLS, so it doesn't count
+            t = time.perf_counter()
+            conn.request("GET", "/__down?bytes=0")
+            r = conn.getresponse(); r.read()
+            ms = (time.perf_counter() - t) * 1000
+            # Cloudflare reports the connection's measured network round trip (cfL4 rtt, in microseconds); that's the
+            # true latency. Timing the request ourselves also counts the Pi's own TLS work, so it's only a fallback.
+            st = r.getheader("Server-Timing") or ""
+            rtt, work = re.search(r"[?&]rtt=(\d+)", st), re.search(r"cfSpeedWorker;dur=([\d.]+)", st)
+            if i:
+                lat.append(int(rtt.group(1)) / 1000 if rtt else ms)
+                raw.append(ms - (float(work.group(1)) if work else 0))   # minus Cloudflare's own (variable) processing time
+        res["ping"] = statistics.median(lat)
+        res["jitter"] = statistics.mean(abs(a - b) for a, b in zip(raw, raw[1:]))   # rtt is smoothed, so use our own timings
+        SPEED["phase"] = "download"
+        rates = []
+        for n in (1_000_000, 10_000_000, 25_000_000):
+            conn.request("GET", f"/__down?bytes={n}")
+            r, first, got = conn.getresponse(), None, 0
+            while True:
+                b = r.read(65536)
+                if not b:
+                    break
+                if first is None:
+                    first = time.perf_counter()
+                got += len(b)
+            dt = time.perf_counter() - first
+            rates.append(got * 8 / max(dt, 1e-3) / 1e6)
+            if dt > 8:      # slow line: skip the bigger file
+                break
+        res["down"] = max(rates[1:] or rates)   # the 1 MB warm-up is too short to measure well
+        SPEED["phase"] = "upload"
+        rates = []
+        for n in (1_000_000, 5_000_000, 10_000_000):
+            body = bytes(n)
+            t = time.perf_counter()
+            conn.request("POST", "/__up", body=body, headers={"Content-Type": "application/octet-stream"})
+            conn.getresponse().read()
+            dt = time.perf_counter() - t - res["ping"] / 1000
+            rates.append(n * 8 / max(dt, 1e-3) / 1e6)
+            if dt > 8:
+                break
+        res["up"] = max(rates[1:] or rates)
+        conn.close()
+    except Exception as e:
+        res["err"] = str(e)[:200]
+    finally:
+        with lock, db() as c:
+            c.execute("INSERT INTO speedtests(ts,down,up,ping,jitter,err) VALUES(?,?,?,?,?,?)",
+                      (res["ts"], res["down"], res["up"], res["ping"], res["jitter"], res["err"]))
+        SPEED.update(running=False, phase=None)
+    print("speed test:", {k: round(v, 1) if isinstance(v, float) else v for k, v in res.items() if k != "ts"}, flush=True)
+
+def speed_every():
+    return (load_conf().get("speed") or {}).get("every_h", SPEED_EVERY)
+
+def speed_loop():
+    time.sleep(180)
+    while True:
+        try:
+            every = speed_every()
+            if every and not SPEED["running"]:
+                with db() as c:
+                    last = c.execute("SELECT MAX(ts) FROM speedtests").fetchone()[0] or 0
+                if time.time() - last >= every * 3600 and claim_speed_test():
+                    speed_test()
+        except Exception as e:
+            print("speed error:", e, flush=True)
+        time.sleep(60)
+
+def api_speed():
+    with db() as c:
+        recent = [dict(r) for r in c.execute("SELECT ts,down,up,ping,jitter,err FROM speedtests ORDER BY ts DESC LIMIT 10")]
+    return {"running": SPEED["running"], "phase": SPEED["phase"], "every_h": speed_every(),
+            "last": next((r for r in recent if not r["err"]), None), "recent": recent}
+
+# ---------- history for the range picker ----------
+RANGES = {"24h": (86400, 600), "7d": (7 * 86400, 3600), "30d": (30 * 86400, 4 * 3600)}
+_hist_cache = {}
+
+def api_history(rng):
+    span, step = RANGES.get(rng, RANGES["24h"])
+    now = time.time()
+    key = (rng, int(now // 60))
+    if key in _hist_cache:
+        return _hist_cache[key]
+    t0, p0 = now - span, now - 2 * span
+    with db() as c:
+        if rng == "24h":   # fine-grained, straight from the raw pings
+            series = [dict(r) for r in c.execute(
+                "SELECT CAST(ts/? AS INT)*? AS t, AVG(ms) ms, 1.0-AVG(ok) loss FROM pings WHERE ts>? GROUP BY t ORDER BY t", (step, step, t0))]
+            q = "SELECT COUNT(*) n, SUM(ok) ok, AVG(ms) avg FROM pings WHERE ts>? AND ts<=?"
+        else:              # longer ranges come from the hourly roll-up
+            series = [dict(r) for r in c.execute(
+                """SELECT CAST(t/? AS INT)*? AS t, SUM(ms_sum)/NULLIF(SUM(ms_n),0) ms, 1.0-SUM(ok)*1.0/SUM(n) loss
+                   FROM ping_hours WHERE t>? GROUP BY 1 ORDER BY 1""", (step, step, t0 - 3600))]
+            q = "SELECT SUM(n) n, SUM(ok) ok, SUM(ms_sum)/NULLIF(SUM(ms_n),0) avg FROM ping_hours WHERE t>? AND t<=?"
+        cur, prev = c.execute(q, (t0, now)).fetchone(), c.execute(q, (p0, t0)).fetchone()
+        outs = [dict(r) for r in c.execute("SELECT * FROM outages WHERE COALESCE(end, ?)>? ORDER BY id DESC", (now, t0))]
+        new = c.execute("SELECT COUNT(*) FROM events WHERE kind='new' AND ts>?", (t0,)).fetchone()[0]
+        new_prev = c.execute("SELECT COUNT(*) FROM events WHERE kind='new' AND ts>? AND ts<=?", (p0, t0)).fetchone()[0]
+        sess = c.execute("SELECT mac, start, end FROM sessions WHERE end>?", (t0 - step,)).fetchall()
+        first_sess = c.execute("SELECT MIN(start) FROM sessions").fetchone()[0] or now
+        speed = [dict(r) for r in c.execute("SELECT ts,down,up,ping FROM speedtests WHERE ts>? AND err IS NULL ORDER BY ts", (t0,))]
+    # devices online per bucket: mark every bucket each online stretch overlaps
+    nb = int(span // step)
+    b0 = (int(now // step) - nb + 1) * step
+    buckets = [set() for _ in range(nb)]
+    for m, s0, s1 in sess:
+        for i in range(max(0, int((s0 - b0) // step)), min(nb - 1, int((s1 - b0) // step)) + 1):
+            buckets[i].add(m)
+    online = [{"t": b0 + i * step, "n": len(b) if b0 + (i + 1) * step > first_sess else None} for i, b in enumerate(buckets)]
+    pct = lambda r: (r["ok"] or 0) / r["n"] * 100 if r["n"] else None
+    out = {"range": rng, "t0": t0, "t1": now, "step": step, "online": online, "new": new, "new_prev": new_prev, "speed": speed,
+           "internet": {"series": series, "avg": cur["avg"], "avg_prev": prev["avg"], "uptime": pct(cur), "uptime_prev": pct(prev),
+                        "outages": outs}}
+    _hist_cache.clear()
+    _hist_cache[key] = out
+    return out
 
 # ---------- auth ----------
 def load_conf():
@@ -730,7 +892,10 @@ def api_state():
         online_series.append({"t": t0, "n": len({m for m, s0, s1 in sess if s0 < t0 + 1800 and s1 >= t0})})
     up = (p["ok"] or 0) / p["n"] * 100 if p["n"] else None
     up_prev = (prev["ok"] or 0) / prev["n"] * 100 if prev["n"] else None
+    with db() as c:
+        sp = c.execute("SELECT ts,down,up,ping FROM speedtests WHERE err IS NULL ORDER BY ts DESC LIMIT 1").fetchone()
     return {"now": now, "devices": devs, "events": events, "online_series": online_series,
+            "speed": {"last": dict(sp) if sp else None, "running": SPEED["running"], "phase": SPEED["phase"]},
             "new_24h": new24, "new_prev": new_prev,
             "internet": {"up": bool(last and last["ok"]), "ms": last["ms"] if last else None,
                          "uptime24h": up, "avg_ms": p["avg"], "series": series, "outages": outs,
@@ -963,6 +1128,10 @@ class H(BaseHTTPRequestHandler):
             self.send(200 if d else 404, json.dumps(d or {"error": "not found"}))
         elif u.path == "/api/events":
             self.send(200, json.dumps(api_events(parse_qs(u.query))))
+        elif u.path == "/api/history":
+            self.send(200, json.dumps(api_history(parse_qs(u.query).get("range", ["24h"])[0])))
+        elif u.path == "/api/speed":
+            self.send(200, json.dumps(api_speed()))
         elif u.path == "/api/alerts":
             self.send(200, json.dumps(api_alerts()))
         elif u.path == "/api/device":
@@ -1012,6 +1181,15 @@ class H(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self.send(502, json.dumps({"error": str(e)[:300]}))
                 return self.send(200 if n else 400, json.dumps({"sent": n} if n else {"error": "Set up ntfy or Telegram first, then save."}))
+            if u.path == "/api/speed/run":
+                if claim_speed_test():
+                    threading.Thread(target=speed_test, daemon=True).start()
+                return self.send(200, json.dumps(api_speed()))
+            if u.path == "/api/speed/settings":
+                conf = load_conf()
+                conf["speed"] = {"every_h": int(d.get("every_h", SPEED_EVERY)) if int(d.get("every_h", SPEED_EVERY)) in (0, 1, 3, 6, 12, 24) else SPEED_EVERY}
+                save_conf(conf)
+                return self.send(200, json.dumps(api_speed()))
             if u.path == "/api/approve_all":
                 with lock, db() as c:
                     n = c.execute("UPDATE devices SET known=1 WHERE known=0").rowcount
@@ -1064,6 +1242,8 @@ if __name__ == "__main__":
     with db() as c:  # backfill vendors for devices seen before vendor lookup existed
         for r in c.execute("SELECT mac FROM devices WHERE vendor IS NULL").fetchall():
             c.execute("UPDATE devices SET vendor=? WHERE mac=?", (vendor(r["mac"]), r["mac"]))
+    with db() as c:
+        aggregate_pings(c, since=0)
     load_extender_state()
     migrate_extender_records()
     threading.Thread(target=scan_loop, daemon=True).start()
@@ -1071,6 +1251,7 @@ if __name__ == "__main__":
     threading.Thread(target=discover_loop, daemon=True).start()
     threading.Thread(target=fingerprint_loop, daemon=True).start()
     threading.Thread(target=notify_loop, daemon=True).start()
+    threading.Thread(target=speed_loop, daemon=True).start()
     threading.Thread(target=ident.dhcp_listener, args=(on_dhcp,), daemon=True).start()
     print(f"Home hub on :{PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
