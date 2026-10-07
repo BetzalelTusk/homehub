@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(HERE, "hub.db")
 CONF = os.path.join(HERE, "config.json")
+SCHOOL = os.path.join(HERE, "school.json")   # schedule exported from Brightspace by tools/thisweek.js
 SUBNET = "192.168.1.0/24"
 PORT = 8080
 SCAN_EVERY = 60          # seconds between LAN sweeps
@@ -1217,6 +1218,37 @@ def api_events(q):
                 if r["kind"] in ks: counts[g] += r["n"]
     return {"events": rows[:limit], "more": len(rows) > limit, "week": counts}
 
+def api_school():
+    try:
+        with open(SCHOOL) as f:
+            d = json.load(f)
+        d["saved"] = os.path.getmtime(SCHOOL)
+        return d
+    except (OSError, ValueError):
+        return {"items": [], "news": [], "notes": [], "generated": None, "saved": None}
+
+
+def save_school(d):
+    """Keep only the fields the School tab uses, trimmed, so a bad import can't bloat or break the page."""
+    if not isinstance(d, dict) or not isinstance(d.get("items"), list):
+        raise ValueError("That doesn't look like a schedule file (no items list).")
+    s = lambda v, n: str(v if v is not None else "")[:n]
+    items = []
+    for i in d["items"][:500]:
+        if isinstance(i, dict) and i.get("when") and i.get("title"):
+            items.append({"course": s(i.get("course"), 20), "kind": s(i.get("kind"), 20), "title": s(i["title"], 200),
+                          "when": s(i["when"], 40), "done": bool(i.get("done"))})
+    news = [{"course": s(n.get("course"), 20), "when": s(n.get("when"), 40), "title": s(n.get("title"), 200), "body": s(n.get("body"), 400)}
+            for n in (d.get("news") or [])[:30] if isinstance(n, dict)]
+    notes = [s(n, 300) for n in (d.get("notes") or [])[:20]]
+    out = {"generated": s(d.get("generated"), 40), "tz": s(d.get("tz"), 40), "items": items, "news": news, "notes": notes}
+    tmp = SCHOOL + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(out, f)
+    os.replace(tmp, SCHOOL)
+    return len(items)
+
+
 def api_alerts():
     a = alert_conf()
     tok = a.get("tg_token") or ""
@@ -1412,6 +1444,8 @@ class H(BaseHTTPRequestHandler):
                       [("Content-Disposition", f'attachment; filename="homehub-{cid}.pcap"')])
         elif u.path == "/api/alerts":
             self.send(200, json.dumps(api_alerts()))
+        elif u.path == "/api/school":
+            self.send(200, json.dumps(api_school()))
         elif u.path == "/api/device":
             d = api_device(parse_qs(u.query).get("mac", [""])[0].lower())
             self.send(200 if d else 404, json.dumps(d or {"error": "not found"}))
@@ -1442,6 +1476,8 @@ class H(BaseHTTPRequestHandler):
         try:
             d = json.loads(self.body() or b"{}")
             mac = str(d.get("mac", "")).lower()
+            if u.path == "/api/school":
+                return self.send(200, json.dumps({"ok": True, "count": save_school(d)}))
             if u.path == "/api/password":
                 if not check_password(d.get("current", "")):
                     return self.send(403, '{"error":"Current password is wrong."}')
