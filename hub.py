@@ -3,8 +3,10 @@
 import calendar, collections, hashlib, hmac, json, os, queue, re, secrets, socket, sqlite3, subprocess, sys, threading, time
 import urllib.request, xml.etree.ElementTree as ET
 import ident
+from datetime import date, datetime, timedelta, timezone
+from html import escape as html_escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(HERE, "hub.db")
@@ -51,6 +53,8 @@ def init():
         CREATE INDEX IF NOT EXISTS sessions_mac ON sessions(mac, end);
         CREATE INDEX IF NOT EXISTS events_mac ON events(mac);
         CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
+        CREATE TABLE IF NOT EXISTS cal_events(id TEXT PRIMARY KEY, gid TEXT, title TEXT, notes TEXT, start TEXT, end TEXT,
+            all_day INTEGER, updated REAL, deleted INTEGER DEFAULT 0, dirty INTEGER DEFAULT 1);
         CREATE TABLE IF NOT EXISTS leases(ip TEXT PRIMARY KEY, mac TEXT, ts REAL, hostname TEXT);
         CREATE TABLE IF NOT EXISTS ping_hours(t INTEGER PRIMARY KEY, n INTEGER, ok INTEGER, ms_sum REAL, ms_n INTEGER);
         CREATE TABLE IF NOT EXISTS speedtests(id INTEGER PRIMARY KEY, ts REAL, down REAL, up REAL, ping REAL, jitter REAL, err TEXT);
@@ -1380,6 +1384,442 @@ def save_school(d):
     return len(items)
 
 
+# --- Personal calendar + Google Calendar ------------------------------------------
+# Events made on the hub live in cal_events and mirror a "Home Hub" calendar in
+# Google, two-way: local edits are pushed, remote edits pulled with a sync token,
+# and an unpushed local edit wins. Every other Google calendar is read-only and
+# kept in memory. Google is optional: without it the events simply stay local.
+G_AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
+G_TOKEN = "https://oauth2.googleapis.com/token"
+G_API = "https://www.googleapis.com/calendar/v3"
+# Read every calendar; write only to calendars this app created (the Home Hub one).
+G_SCOPES = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.app.created"
+GCAL_EVERY = 300          # seconds between Google syncs (edits trigger one straight away)
+GCAL_OTHERS_EVERY = 600   # seconds between re-reads of the read-only calendars
+HUB_COLOR = "#7986cb"     # until Google assigns the Home Hub calendar a colour
+gcal = {"access": None, "exp": 0, "events": [], "calendars": [], "synced": None, "error": None,
+        "others_at": 0, "hub_ok": None, "hub_color": None}
+gcal_lock = threading.Lock()
+gcal_kick = threading.Event()
+oauth_states = {}         # state -> (expiry, redirect_uri), for the sign-in round trip
+
+
+class GoogleError(Exception):
+    def __init__(self, code, msg=""):
+        super().__init__(f"Google: {msg or code}")
+        self.code = code
+
+
+def kv_get(k):
+    with db() as c:
+        r = c.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
+    return r["v"] if r else None
+
+def kv_set(k, v):
+    with lock, db() as c:
+        if v is None:
+            c.execute("DELETE FROM kv WHERE k=?", (k,))
+        else:
+            c.execute("INSERT OR REPLACE INTO kv VALUES(?,?)", (k, v))
+
+def _utc(s):
+    d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    if d.tzinfo is None:
+        raise ValueError("A time needs a time zone.")
+    return d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def clean_event(d):
+    """Validate an event from the page. All-day ends are exclusive dates, like Google's."""
+    title = str(d.get("title") or "").strip()[:200] or "(No title)"
+    notes = str(d.get("notes") or "")[:2000]
+    if d.get("allDay"):
+        start = date.fromisoformat(str(d.get("start", ""))[:10])
+        end = date.fromisoformat(str(d["end"])[:10]) if d.get("end") else start + timedelta(days=1)
+        if end <= start:
+            end = start + timedelta(days=1)
+        return title, notes, start.isoformat(), end.isoformat(), 1
+    start, end = _utc(str(d.get("start", ""))), _utc(str(d.get("end", "")))
+    if end <= start:
+        raise ValueError("The event has to end after it starts.")
+    return title, notes, start, end, 0
+
+def save_event(d):
+    title, notes, start, end, all_day = clean_event(d)
+    eid = str(d.get("id") or "")
+    with lock, db() as c:
+        if eid and c.execute("SELECT 1 FROM cal_events WHERE id=? AND deleted=0", (eid,)).fetchone():
+            c.execute("UPDATE cal_events SET title=?,notes=?,start=?,end=?,all_day=?,updated=?,dirty=1 WHERE id=?",
+                      (title, notes, start, end, all_day, time.time(), eid))
+        else:
+            eid = secrets.token_hex(8)
+            c.execute("INSERT INTO cal_events(id,gid,title,notes,start,end,all_day,updated,deleted,dirty) VALUES(?,NULL,?,?,?,?,?,?,0,1)",
+                      (eid, title, notes, start, end, all_day, time.time()))
+    gcal_kick.set()
+    return eid
+
+def delete_event(eid):
+    with lock, db() as c:
+        c.execute("DELETE FROM cal_events WHERE id=? AND gid IS NULL", (eid,))   # never reached Google
+        c.execute("UPDATE cal_events SET deleted=1, dirty=1, updated=? WHERE id=?", (time.time(), eid))
+    gcal_kick.set()
+
+def _fg(hexcolor):
+    """Readable text colour for a calendar background colour."""
+    try:
+        r, g, b = (int(hexcolor[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    except (ValueError, TypeError):
+        return "#fff"
+    return "#1f1f1f" if 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6 else "#fff"
+
+def ts_info():
+    """This Pi's Tailscale name (raspberrypi.tailnet.ts.net) and whether HTTPS certs are on, re-checked every minute."""
+    if time.time() - gcal.get("ts_at", 0) > 60:
+        try:
+            st = json.loads(subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=10).stdout)
+            gcal["ts"] = (st["Self"]["DNSName"].rstrip("."), bool(st.get("CertDomains")))
+        except Exception:
+            gcal["ts"] = (None, False)
+        gcal["ts_at"] = time.time()
+    return gcal["ts"]
+
+def ts_name():
+    return ts_info()[0]
+
+def g_redirect():
+    n = ts_name()
+    return f"https://{n}/oauth/google/callback" if n else f"http://localhost:{PORT}/oauth/google/callback"
+
+def g_post_token(fields):
+    req = urllib.request.Request(G_TOKEN, urlencode(fields).encode(), {"Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            j = json.loads(e.read() or b"{}")
+        except ValueError:
+            j = {}
+        raise GoogleError(j.get("error") or e.code, j.get("error_description") or j.get("error") or str(e.code))
+
+def g_token():
+    if gcal["access"] and time.time() < gcal["exp"]:
+        return gcal["access"]
+    conf = load_conf()
+    if not conf.get("g_refresh"):
+        raise ValueError("Google isn't connected.")
+    try:
+        tok = g_post_token({"client_id": conf.get("g_client_id", ""), "client_secret": conf.get("g_client_secret", ""),
+                            "refresh_token": conf["g_refresh"], "grant_type": "refresh_token"})
+    except GoogleError as e:
+        if e.code in ("invalid_grant", "invalid_client", "unauthorized_client"):
+            conf = load_conf()
+            conf.pop("g_refresh", None)
+            save_conf(conf)
+            raise ValueError("Google sign-in expired or was revoked. Connect again in Settings.")
+        raise
+    gcal.update(access=tok["access_token"], exp=time.time() + int(tok.get("expires_in", 3600)) - 60)
+    return gcal["access"]
+
+def g_api(method, path, params=None, body=None, retry=True):
+    url = G_API + path + ("?" + urlencode(params) if params else "")
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data, {"Authorization": "Bearer " + g_token(), "Content-Type": "application/json"},
+                                 method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            b = r.read()
+            return json.loads(b) if b else {}
+    except urllib.error.HTTPError as e:
+        if e.code == 401 and retry:
+            gcal["access"] = None
+            return g_api(method, path, params, body, False)
+        try:
+            j = json.loads(e.read() or b"{}").get("error") or {}
+        except ValueError:
+            j = {}
+        raise GoogleError(e.code, j.get("message") if isinstance(j, dict) else str(j))
+
+def _q(s):
+    return quote(s, safe="")
+
+def g_auth_url():
+    conf = load_conf()
+    if not (conf.get("g_client_id") and conf.get("g_client_secret")):
+        raise ValueError("Save your Google OAuth client ID and secret first.")
+    now = time.time()
+    for k, (exp, _) in list(oauth_states.items()):
+        if exp < now:
+            oauth_states.pop(k, None)
+    state, redirect = secrets.token_urlsafe(24), g_redirect()
+    oauth_states[state] = (now + 600, redirect)
+    return G_AUTH + "?" + urlencode({"client_id": conf["g_client_id"], "redirect_uri": redirect, "response_type": "code",
+                                     "scope": G_SCOPES, "access_type": "offline", "prompt": "consent", "state": state})
+
+def g_callback(qs):
+    st = oauth_states.pop(qs.get("state", [""])[0], None)
+    if not st or st[0] < time.time():
+        raise ValueError("This sign-in link has expired. Start again from Settings.")
+    if qs.get("error"):
+        raise ValueError("Google didn't connect: " + qs["error"][0])
+    conf = load_conf()
+    tok = g_post_token({"code": qs.get("code", [""])[0], "client_id": conf.get("g_client_id", ""),
+                        "client_secret": conf.get("g_client_secret", ""), "redirect_uri": st[1], "grant_type": "authorization_code"})
+    if not tok.get("refresh_token"):
+        raise ValueError("Google didn't send a long-lived sign-in. Remove Home Hub at myaccount.google.com/permissions and connect again.")
+    granted = set(tok.get("scope", "").split())
+    if not set(G_SCOPES.split()) <= granted:
+        raise ValueError("Calendar access wasn't granted. Connect again and tick both calendar permissions.")
+    conf["g_refresh"] = tok["refresh_token"]
+    save_conf(conf)
+    gcal.update(access=tok["access_token"], exp=time.time() + int(tok.get("expires_in", 3600)) - 60, error=None)
+    account = g_api("GET", "/calendars/primary").get("id")
+    conf = load_conf()
+    if conf.get("g_account") != account:      # a different Google account: start the mirror over
+        conf.pop("g_hub_cal", None)
+        kv_set("g_sync_token", None)
+        with lock, db() as c:
+            c.execute("DELETE FROM cal_events WHERE deleted=1")
+            c.execute("UPDATE cal_events SET gid=NULL, dirty=1")
+    conf["g_account"] = account
+    save_conf(conf)
+    gcal.update(hub_ok=None, others_at=0)
+    gcal_kick.set()
+    return account
+
+def g_disconnect():
+    conf = load_conf()
+    tok = conf.pop("g_refresh", None)
+    save_conf(conf)
+    if tok:
+        try:
+            urllib.request.urlopen(urllib.request.Request("https://oauth2.googleapis.com/revoke",
+                                   urlencode({"token": tok}).encode()), timeout=10).read()
+        except Exception:
+            pass   # revoking is best effort; the token is gone from the hub either way
+    gcal.update(access=None, exp=0, events=[], calendars=[], synced=None, error=None, hub_ok=None)
+
+def g_hub_cal():
+    conf = load_conf()
+    cid = conf.get("g_hub_cal")
+    if cid and gcal["hub_ok"] == cid:
+        return cid
+    if cid:
+        try:
+            g_api("GET", f"/calendars/{_q(cid)}")
+            gcal["hub_ok"] = cid
+            return cid
+        except GoogleError as e:
+            if e.code not in (403, 404, 410):
+                raise
+    cal = g_api("POST", "/calendars", body={"summary": "Home Hub", "description": "Events made on the Home Hub dashboard",
+                                            "timeZone": "America/New_York"})
+    conf = load_conf()
+    conf["g_hub_cal"] = cal["id"]
+    save_conf(conf)
+    kv_set("g_sync_token", None)
+    with lock, db() as c:     # the old calendar is gone: everything has to be uploaded again
+        c.execute("DELETE FROM cal_events WHERE deleted=1")
+        c.execute("UPDATE cal_events SET gid=NULL, dirty=1")
+    gcal["hub_ok"] = cal["id"]
+    return cal["id"]
+
+def g_body(r):
+    b = {"summary": r["title"], "description": r["notes"] or "", "status": "confirmed",
+         "extendedProperties": {"private": {"hubId": r["id"]}}}
+    if r["all_day"]:   # explicit nulls so PATCH clears the other kind of time
+        b["start"], b["end"] = {"date": r["start"], "dateTime": None}, {"date": r["end"], "dateTime": None}
+    else:
+        b["start"], b["end"] = {"dateTime": r["start"], "date": None}, {"dateTime": r["end"], "date": None}
+    return b
+
+def from_google(ev):
+    s, e = ev["start"], ev.get("end") or ev["start"]
+    title = (ev.get("summary") or "(No title)")[:200]
+    notes = (ev.get("description") or "")[:2000]
+    if "date" in s:
+        return title, notes, s["date"], e.get("date") or s["date"], 1
+    return title, notes, _utc(s["dateTime"]), _utc(e.get("dateTime") or s["dateTime"]), 0
+
+def g_push(cal):
+    base = f"/calendars/{_q(cal)}/events"
+    with db() as c:
+        rows = c.execute("SELECT * FROM cal_events WHERE dirty=1").fetchall()
+    for r in rows:
+        if r["deleted"]:
+            if r["gid"]:
+                try:
+                    g_api("DELETE", f"{base}/{_q(r['gid'])}")
+                except GoogleError as e:
+                    if e.code not in (404, 410):
+                        raise
+            with lock, db() as c:
+                c.execute("DELETE FROM cal_events WHERE id=? AND deleted=1", (r["id"],))
+            continue
+        ev = None
+        if r["gid"]:
+            try:
+                ev = g_api("PATCH", f"{base}/{_q(r['gid'])}", body=g_body(r))
+            except GoogleError as e:
+                if e.code not in (404, 410):
+                    raise
+        if ev is None:   # new, or deleted in Google since: the hub edit wins
+            ev = g_api("POST", base, body=g_body(r))
+        with lock, db() as c:
+            c.execute("UPDATE cal_events SET gid=? WHERE id=?", (ev["id"], r["id"]))
+            c.execute("UPDATE cal_events SET dirty=0 WHERE id=? AND updated=?", (r["id"], r["updated"]))
+
+def g_pull(cal):
+    tok = kv_get("g_sync_token")
+    params = {"singleEvents": "true", "showDeleted": "true", "maxResults": 250}
+    if tok:
+        params["syncToken"] = tok
+    items, resp = [], {}
+    while True:
+        try:
+            resp = g_api("GET", f"/calendars/{_q(cal)}/events", params)
+        except GoogleError as e:
+            if e.code == 410 and tok:      # sync token expired: do a full sync
+                kv_set("g_sync_token", None)
+                return g_pull(cal)
+            raise
+        items += resp.get("items", [])
+        if not resp.get("nextPageToken"):
+            break
+        params["pageToken"] = resp["nextPageToken"]
+    with lock, db() as c:
+        pending = {x["gid"] for x in c.execute("SELECT gid FROM cal_events WHERE dirty=1 AND gid IS NOT NULL")}
+        seen = set()
+        for ev in items:
+            gid = ev["id"]
+            seen.add(gid)
+            if gid in pending:
+                continue                   # an unpushed hub edit wins
+            if ev.get("status") == "cancelled":
+                c.execute("DELETE FROM cal_events WHERE gid=?", (gid,))
+                continue
+            try:
+                title, notes, start, end, all_day = from_google(ev)
+            except (KeyError, ValueError):
+                continue
+            row = c.execute("SELECT id FROM cal_events WHERE gid=?", (gid,)).fetchone()
+            hub_id = ((ev.get("extendedProperties") or {}).get("private") or {}).get("hubId")
+            if not row and hub_id:         # pushed, but the hub never stored the Google id
+                row = c.execute("SELECT id FROM cal_events WHERE id=? AND gid IS NULL", (hub_id,)).fetchone()
+            if row:
+                c.execute("UPDATE cal_events SET gid=?,title=?,notes=?,start=?,end=?,all_day=?,deleted=0,dirty=0 WHERE id=?",
+                          (gid, title, notes, start, end, all_day, row["id"]))
+            else:
+                c.execute("INSERT INTO cal_events(id,gid,title,notes,start,end,all_day,updated,deleted,dirty) VALUES(?,?,?,?,?,?,?,?,0,0)",
+                          (secrets.token_hex(8), gid, title, notes, start, end, all_day, time.time()))
+        if not tok:   # full sync: anything mirrored but no longer in Google was deleted there
+            for r in c.execute("SELECT id, gid FROM cal_events WHERE gid IS NOT NULL AND dirty=0").fetchall():
+                if r["gid"] not in seen:
+                    c.execute("DELETE FROM cal_events WHERE id=?", (r["id"],))
+    if resp.get("nextSyncToken"):
+        kv_set("g_sync_token", resp["nextSyncToken"])
+
+def _is_brightspace(cal):
+    """The Brightspace feed subscribed in Google: skip it, the School tab already has it."""
+    name = " ".join(filter(None, (cal.get("summary"), cal.get("summaryOverride"), cal.get("description")))).lower()
+    return cal["id"].endswith("@import.calendar.google.com") and ("baltimore county" in name or "brightspace" in name)
+
+def g_read_others(hub_cal):
+    cals, params = [], {"maxResults": 250}
+    while True:
+        r = g_api("GET", "/users/me/calendarList", params)
+        cals += r.get("items", [])
+        if not r.get("nextPageToken"):
+            break
+        params["pageToken"] = r["nextPageToken"]
+    now = time.time()
+    tmin = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 62 * 86400))
+    tmax = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now + 242 * 86400))
+    events, infos = [], []
+    for cal in cals:
+        color = cal.get("backgroundColor") or "#039be5"
+        if cal["id"] == hub_cal:
+            gcal["hub_color"] = color
+            continue
+        if cal.get("deleted") or _is_brightspace(cal):
+            continue
+        name = (cal.get("summaryOverride") or cal.get("summary") or cal["id"])[:80]
+        infos.append({"name": name, "color": color, "fg": _fg(color)})
+        p = {"timeMin": tmin, "timeMax": tmax, "singleEvents": "true", "orderBy": "startTime", "maxResults": 2500}
+        while True:
+            try:
+                r = g_api("GET", f"/calendars/{_q(cal['id'])}/events", p)
+            except GoogleError:
+                break                     # one unreadable calendar shouldn't stop the rest
+            for ev in r.get("items", []):
+                if ev.get("status") == "cancelled":
+                    continue
+                try:
+                    title, notes, start, end, all_day = from_google(ev)
+                except (KeyError, ValueError):
+                    continue
+                link = ev.get("htmlLink") or ""
+                events.append({"id": "g:" + ev["id"], "src": "google", "cal": name, "color": color, "fg": _fg(color),
+                               "title": title, "notes": notes[:600], "start": start, "end": end, "allDay": bool(all_day),
+                               "editable": False, "location": (ev.get("location") or "")[:200],
+                               "link": link if link.startswith("https://www.google.com/calendar") else ""})
+            if not r.get("nextPageToken"):
+                break
+            p["pageToken"] = r["nextPageToken"]
+    gcal.update(events=events, calendars=infos, others_at=time.time())
+
+def gcal_sync(others=False):
+    if not load_conf().get("g_refresh") or not gcal_lock.acquire(blocking=False):
+        return
+    try:
+        cal = g_hub_cal()
+        g_push(cal)
+        g_pull(cal)
+        if others or time.time() - gcal["others_at"] > GCAL_OTHERS_EVERY:
+            g_read_others(cal)
+        gcal.update(synced=time.time(), error=None)
+    except Exception as e:
+        gcal["error"] = str(e)[:300]
+    finally:
+        gcal_lock.release()
+
+def gcal_loop():
+    while True:
+        gcal_sync()
+        gcal_kick.wait(GCAL_EVERY)
+        gcal_kick.clear()
+
+def api_calendar():
+    color = gcal["hub_color"] or HUB_COLOR
+    with db() as c:
+        rows = c.execute("SELECT id,gid,title,notes,start,end,all_day FROM cal_events WHERE deleted=0").fetchall()
+    events = [{"id": r["id"], "src": "hub", "cal": "Home Hub", "color": color, "fg": _fg(color), "title": r["title"],
+               "notes": r["notes"], "start": r["start"], "end": r["end"], "allDay": bool(r["all_day"]), "editable": True,
+               "synced": bool(r["gid"])} for r in rows]
+    conf = load_conf()
+    on = bool(conf.get("g_refresh"))
+    return {"events": events + (gcal["events"] if on else []),
+            "google": {"configured": bool(conf.get("g_client_id") and conf.get("g_client_secret")),
+                       "client_id": conf.get("g_client_id", ""), "connected": on, "account": conf.get("g_account") if on else None,
+                       "synced": gcal["synced"], "error": gcal["error"] if on else None, "redirect": g_redirect(),
+                       "https": ts_info()[1], "hub_color": color, "calendars": gcal["calendars"] if on else []}}
+
+def set_google_client(cid, secret):
+    cid, secret = cid.strip(), secret.strip()
+    if not re.fullmatch(r"[\w.-]+\.apps\.googleusercontent\.com", cid):
+        raise ValueError("The client ID should end in .apps.googleusercontent.com")
+    conf = load_conf()
+    if secret:
+        if len(secret) > 200:
+            raise ValueError("That client secret looks wrong.")
+        conf["g_client_secret"] = secret
+    elif not conf.get("g_client_secret"):
+        raise ValueError("Paste the client secret too.")
+    if conf.get("g_client_id") not in (None, cid):
+        conf.pop("g_refresh", None)          # a different OAuth client: its old sign-in won't work
+    conf["g_client_id"] = cid
+    save_conf(conf)
+
+
 def api_alerts():
     a = alert_conf()
     tok = a.get("tg_token") or ""
@@ -1534,12 +1974,27 @@ class H(BaseHTTPRequestHandler):
     def login_page(self, msg="", code=200):
         self.send(code, LOGIN_HTML.replace("%MSG%", f'<p class="err">{msg}</p>' if msg else ""), "text/html; charset=utf-8")
 
+    def oauth_done(self, qs):
+        # Google redirects here cross-site, so the SameSite=Strict session cookie isn't sent;
+        # the single-use state from /oauth/google/start is what authorises this request.
+        try:
+            msg, ok = f"Google Calendar is connected as {g_callback(qs)}.", True
+        except Exception as e:
+            msg, ok = str(e), False
+        page = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
+                '<title>Home Hub</title><body style="font:15px system-ui,sans-serif;padding:40px 20px;max-width:520px;margin:auto">'
+                f'<p>{html_escape(msg)}</p><p><a href="/#settings">Back to Settings</a></p>'
+                + ('<script>setTimeout(function(){location.replace("/#settings")},1500)</script>' if ok else ""))
+        self.send(200 if ok else 400, page, "text/html; charset=utf-8")
+
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/login":
             return self.login_page()
         if u.path == "/logout":
             return self.send(303, "", "text/plain", [("Location", "/login"), ("Set-Cookie", "hub=; Path=/; Max-Age=0")])
+        if u.path == "/oauth/google/callback":
+            return self.oauth_done(parse_qs(u.query))
         if not self.authed():
             if u.path.startswith("/api/"):
                 return self.send(401, '{"error":"auth"}')
@@ -1577,6 +2032,13 @@ class H(BaseHTTPRequestHandler):
             self.send(200, json.dumps(api_alerts()))
         elif u.path == "/api/school":
             self.send(200, json.dumps(api_school()))
+        elif u.path == "/api/calendar":
+            self.send(200, json.dumps(api_calendar()))
+        elif u.path == "/oauth/google/start":
+            try:
+                self.send(303, "", "text/plain", [("Location", g_auth_url())])
+            except ValueError:
+                self.send(303, "", "text/plain", [("Location", "/#settings")])
         elif u.path == "/api/device":
             d = api_device(parse_qs(u.query).get("mac", [""])[0].lower())
             self.send(200 if d else 404, json.dumps(d or {"error": "not found"}))
@@ -1615,6 +2077,20 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/school/sync":
                 sync_school_feed(force=True)
                 return self.send(200, json.dumps(api_school()["feed"]))
+            if u.path == "/api/calendar/event":
+                return self.send(200, json.dumps({"id": save_event(d)}))
+            if u.path == "/api/calendar/event/delete":
+                delete_event(str(d.get("id", "")))
+                return self.send(200, "{}")
+            if u.path == "/api/google/client":
+                set_google_client(str(d.get("client_id", "")), str(d.get("client_secret", "")))
+                return self.send(200, json.dumps(api_calendar()["google"]))
+            if u.path == "/api/google/disconnect":
+                g_disconnect()
+                return self.send(200, json.dumps(api_calendar()["google"]))
+            if u.path == "/api/google/sync":
+                gcal_sync(others=True)
+                return self.send(200, json.dumps(api_calendar()["google"]))
             if u.path == "/api/password":
                 if not check_password(d.get("current", "")):
                     return self.send(403, '{"error":"Current password is wrong."}')
@@ -1722,6 +2198,7 @@ if __name__ == "__main__":
     threading.Thread(target=speed_loop, daemon=True).start()
     load_feed_cache()
     threading.Thread(target=feed_loop, daemon=True).start()
+    threading.Thread(target=gcal_loop, daemon=True).start()
     threading.Thread(target=ident.dhcp_listener, args=(on_dhcp,), daemon=True).start()
     print(f"Home hub on :{PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
