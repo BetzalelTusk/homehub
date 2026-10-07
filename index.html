@@ -495,6 +495,95 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
  .pkdet{grid-template-columns:80px minmax(0,1fr)}
  .speedrow{grid-template-columns:1fr 1fr}.speedrow>div:nth-child(3){border-left:0}.speedrow>div:nth-child(n+3){border-top:1px solid var(--border-s)}
 }
+/* school calendar, Google Calendar-style */
+.cal-c0{--ev:#1a73e8}.cal-c1{--ev:#b9570b}.cal-c2{--ev:#188038}.cal-c3{--ev:#9334e6}.cal-c4{--ev:#d01884}.cal-c5{--ev:#12858c}
+:root{--ev-fg:#fff;--cal-today:#1a73e8;--cal-today-fg:#fff}
+:root[data-theme=dark]{--ev-fg:#131314;--cal-today:#8ab4f8;--cal-today-fg:#131314}
+:root[data-theme=dark] .cal-c0{--ev:#8ab4f8}:root[data-theme=dark] .cal-c1{--ev:#fcad70}:root[data-theme=dark] .cal-c2{--ev:#81c995}
+:root[data-theme=dark] .cal-c3{--ev:#c58af9}:root[data-theme=dark] .cal-c4{--ev:#ff8bcb}:root[data-theme=dark] .cal-c5{--ev:#78d9ec}
+.cal-bar{display:flex;align-items:center;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.cal-bar h2{font-size:22px;font-weight:400;color:var(--head);margin:0 0 0 10px;white-space:nowrap;letter-spacing:-.01em}
+.cal-nav{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--icon);flex:none}
+.cal-nav:hover{background:var(--hover)}
+.cal-stamp{font-size:12px;color:var(--mut);margin-right:6px;white-space:nowrap}
+.seg2{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex:none}
+.seg2 button{height:32px;padding:0 12px;font-size:13px;font-weight:500;color:var(--fg)}
+.seg2 button+button{border-left:1px solid var(--border)}
+.seg2 button:hover{background:var(--hover)}.seg2 button.on{background:var(--nav-on);color:var(--head)}
+.cal-leg{display:flex;gap:4px 14px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border-s)}
+.cal-cb{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--fg);padding:2px 0}
+.cal-cb .bx{width:16px;height:16px;border-radius:3px;border:2px solid var(--ev);background:var(--ev);display:grid;place-items:center;color:var(--ev-fg)}
+.cal-cb .bx .i{width:12px;height:12px;stroke-width:3}
+.cal-cb.off .bx{background:none}.cal-cb.off .bx .i{visibility:hidden}.cal-cb.off{color:var(--mut)}
+.cal-dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-bottom:1px solid var(--border-s)}
+.cal-dow div{text-align:center;font-size:11px;font-weight:500;color:var(--mut);padding:8px 0 2px;letter-spacing:.08em}
+.cal-month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(118px,auto)}
+.cal-cell{border-right:1px solid var(--border-s);border-bottom:1px solid var(--border-s);padding:4px 4px 6px;min-width:0}
+.cal-cell:nth-child(7n){border-right:0}.cal-month .cal-cell:nth-last-child(-n+7){border-bottom:0}
+.cal-dn{display:block;width:26px;height:26px;line-height:26px;margin:0 auto 4px;text-align:center;border-radius:50%;font-size:12px;font-weight:500;color:var(--head)}
+button.cal-dn:hover{background:var(--hover)}
+.cal-cell.out .cal-dn{color:var(--sub)}
+.cal-cell.today .cal-dn,.cal-wcol.today .dn,.cal-ag.today .dn{background:var(--cal-today);color:var(--cal-today-fg)}
+.cal-evs{display:flex;flex-direction:column;gap:2px}
+.cal-ev{display:flex;align-items:center;gap:5px;width:100%;height:22px;padding:0 6px;border-radius:4px;font-size:12px;color:var(--fg);white-space:nowrap;overflow:hidden;text-align:left;min-width:0}
+.cal-ev:hover{background:var(--hover)}
+.cal-ev .d{width:8px;height:8px;border-radius:50%;background:var(--ev);flex:none}
+.cal-ev .t{color:var(--mut);flex:none}
+.cal-ev .n{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cal-ev.ad{background:var(--ev);color:var(--ev-fg);font-weight:500}
+.cal-ev.ad:hover{filter:brightness(.93)}
+.cal-ev.done,.cal-blk.done{opacity:.55}.cal-ev.done .n,.cal-blk.done b,.cal-row.done .n{text-decoration:line-through}
+.cal-more{font-size:12px;font-weight:500;color:var(--fg);padding:2px 6px;border-radius:4px;text-align:left}
+.cal-more:hover{background:var(--hover)}
+.cal-wscroll{overflow-x:auto}
+.cal-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));min-height:440px}
+.cal-wcol{border-right:1px solid var(--border-s);min-width:0;padding:0 5px 10px}
+.cal-wcol:last-child{border-right:0}
+.cal-wh{text-align:center;padding:12px 0 10px}
+.cal-wh .dw{font-size:11px;font-weight:500;color:var(--mut);letter-spacing:.08em}
+.cal-wh .dn{display:block;width:46px;height:46px;line-height:46px;margin:4px auto 0;border-radius:50%;font-size:24px;color:var(--head)}
+button.dn:hover{background:var(--hover)}
+.cal-wcol.today .dw{color:var(--cal-today)}
+.cal-blk{display:block;width:100%;text-align:left;border-radius:6px;padding:6px 8px;margin-top:4px;background:var(--ev);color:var(--ev-fg);font-size:12px;line-height:1.35}
+.cal-blk b{display:block;font-weight:500;word-break:break-word}
+.cal-blk:hover{filter:brightness(.93)}
+.cal-blk.tm{background:color-mix(in srgb,var(--ev) 16%,var(--surface));color:var(--head);border-left:4px solid var(--ev)}
+.cal-ag{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px;padding:8px 16px;border-bottom:1px solid var(--border-s)}
+.cal-ag:last-child{border-bottom:0}
+.cal-ag .dd{display:flex;align-items:flex-start;gap:8px;padding-top:3px}
+.cal-ag .dn{width:34px;height:34px;line-height:34px;text-align:center;border-radius:50%;font-size:20px;color:var(--head);flex:none}
+.cal-ag .dw{font-size:11px;font-weight:500;color:var(--mut);letter-spacing:.06em;padding-top:11px;white-space:nowrap}
+.cal-ag.today .dw{color:var(--cal-today)}
+.cal-row{display:flex;align-items:center;gap:12px;padding:8px;border-radius:6px;width:100%;text-align:left;font-size:14px;color:var(--fg);min-width:0}
+.cal-row:hover{background:var(--hover)}
+.cal-row .d{width:10px;height:10px;border-radius:50%;background:var(--ev);flex:none}
+.cal-row .t{width:84px;flex:none;font-size:13px;color:var(--fg)}
+.cal-row .n{flex:1;min-width:0;color:var(--head)}
+.cal-row .c{color:var(--mut);font-size:12.5px;flex:none}
+.cal-row.done{opacity:.55}
+.cal-pop{position:fixed;z-index:200;width:360px;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--sh-dlg);padding:8px 8px 16px}
+.cal-pop .ph{display:flex;justify-content:flex-end}
+.cal-pop .pr{display:flex;gap:16px;align-items:flex-start;padding:4px 16px 0 20px}
+.cal-pop .pr+.pr{margin-top:14px}
+.cal-pop .sq{width:16px;height:16px;border-radius:4px;background:var(--ev);margin-top:7px;flex:none}
+.cal-pop .pr>.i{width:18px;height:18px;color:var(--icon);margin-top:1px;flex:none}
+.cal-pop h3{font-size:21px;font-weight:400;color:var(--head);margin:0 0 4px;line-height:1.3;word-break:break-word}
+.cal-pop .m{font-size:14px;color:var(--fg);line-height:1.45}
+.cal-pop .dh{font-size:12px;font-weight:500;color:var(--mut);letter-spacing:.06em;text-align:center}
+.cal-pop .dbig{font-size:26px;color:var(--head);text-align:center;margin-bottom:8px}
+@media(max-width:640px){
+ .cal-bar h2{font-size:18px;margin-left:4px}.cal-stamp{display:none}
+ .cal-month{grid-auto-rows:minmax(64px,auto)}
+ .cal-cell{padding:3px 1px 5px}
+ .cal-evs{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:3px}
+ .cal-ev{width:7px;height:7px;padding:0;border-radius:50%;background:var(--ev)}
+ .cal-ev .d,.cal-ev .t,.cal-ev .n{display:none}
+ .cal-more{display:none}
+ .cal-week{min-width:760px}
+ .cal-ag{grid-template-columns:76px minmax(0,1fr);padding:8px 10px}
+ .cal-ag .dw{display:none}
+ .cal-row{gap:8px}.cal-row .t{width:58px;font-size:12px}.cal-row .c{display:none}
+}
 </style></head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -737,15 +826,20 @@ dialog .row{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 
       <!-- SCHOOL -->
       <section class="view" id="v-school">
-        <div class="card">
-          <div class="tb">
-            <div class="chips" id="scFilters"></div>
+        <div class="card" style="overflow:hidden">
+          <div class="cal-bar">
+            <button class="btn ol sm" onclick="scGo(0)" title="Today (t)">Today</button>
+            <button class="cal-nav" onclick="scGo(-1)" title="Previous (k)" aria-label="Previous"><svg class="i" style="transform:rotate(180deg)"><use href="#i-chev"/></svg></button>
+            <button class="cal-nav" onclick="scGo(1)" title="Next (j)" aria-label="Next"><svg class="i"><use href="#i-chev"/></svg></button>
+            <h2 id="scTitle"></h2>
             <span style="flex:1"></span>
-            <span class="tm" id="scStamp" style="font-size:12.5px;color:var(--mut)"></span>
-            <button class="btn ol sm" onclick="$('#scFile').click()"><svg class="i"><use href="#i-refresh"/></svg>Import schedule.json</button>
+            <span class="cal-stamp" id="scStamp"></span>
+            <div class="seg2" id="scViews"></div>
+            <button class="cal-nav" onclick="$('#scFile').click()" title="Import schedule.json" aria-label="Import schedule.json"><svg class="i" style="transform:rotate(180deg)"><use href="#i-download"/></svg></button>
             <input type="file" id="scFile" accept=".json,application/json" hidden>
           </div>
-          <ul class="list" id="scList"></ul>
+          <div class="cal-leg" id="scLegend"></div>
+          <div id="scBody"></div>
         </div>
         <div class="sech"><h2>Recent announcements</h2></div>
         <div class="card"><ul class="list" id="scNews"></ul></div>
@@ -888,32 +982,108 @@ function brand(d){const idn=d.ident||{},mk=[idn.maker,d.vendor].join(' ').toLowe
 function avatar(d,cls=''){const k=kind(d),b=brand(d);return`<span class="avw"><span class="av ${cls} ${b?'brand b-'+b:'c-'+k.c}"${b?` title="${BRANDS[b]}"`:''}>${b?`<svg class="i"><use href="#b-${b}"/></svg>`:ic(k.icon)}</span><span class="pres ${d.online?'on':''}" title="${d.online?'Online':'Offline'}"></span></span>`}
 const statusChip=d=>d.online?'<span class="chip ok"><span class="dt"></span>Online</span>':'<span class="chip off"><span class="dt"></span>Offline</span>';
 
-/* school: schedule exported from Brightspace by tools/thisweek.js, imported as JSON */
-let SC=null,scF='open';
-const SC_C=['blue','orange','green','purple','teal','red'];
-const scColor=c=>SC_C[[...String(c)].reduce((a,ch)=>a+ch.charCodeAt(0),0)%SC_C.length];
+/* school: Google Calendar-style views over schedule.json (exported from Brightspace by tools/thisweek.js) */
+let SC=null,SCI=[],scCourses=[],scAnchor=null,scView=null,scHide=new Set();
+try{scView=localStorage.getItem('scView');scHide=new Set(JSON.parse(localStorage.getItem('scHide')||'[]'))}catch(e){}
+if(!['month','week','agenda'].includes(scView))scView=matchMedia('(max-width:640px)').matches?'agenda':'month';
+const scSave=()=>{try{localStorage.setItem('scView',scView);localStorage.setItem('scHide',JSON.stringify([...scHide]))}catch(e){}};
 const scDay=t=>{const d=new Date(t);d.setHours(0,0,0,0);return d.getTime()};
-const scFmt=t=>new Date(t).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+const scAdd=(t,n)=>{const d=new Date(t);d.setDate(d.getDate()+n);return d.getTime()};   // calendar days, DST-safe
+const scTime=t=>{const d=new Date(t),h=d.getHours(),m=d.getMinutes();return(h%12||12)+(m?':'+String(m).padStart(2,'0'):'')+(h<12?'am':'pm')};
+const scDate=(t,o)=>new Date(t).toLocaleDateString([],o);
+const scCol=c=>'cal-c'+(Math.max(0,scCourses.indexOf(c))%6);
+const scWhen=i=>i.allDay?'All day':'Due '+scTime(i.t);
 async function loadSchool(){try{SC=await api('/api/school')}catch(e){return}drawSchool()}
 function scItems(){const now=Date.now();
- return(SC&&SC.items||[]).map(i=>({...i,t:Date.parse(i.when)})).filter(i=>!isNaN(i.t)).map(i=>({...i,past:i.t<now})).sort((a,b)=>a.t-b.t)}
+ return(SC&&SC.items||[]).map(i=>({...i,t:Date.parse(i.when)})).filter(i=>!isNaN(i.t)).sort((a,b)=>a.t-b.t)
+  .map((i,k)=>{const d=new Date(i.t);return{...i,k,day:scDay(i.t),past:i.t<now,allDay:d.getHours()===0&&d.getMinutes()===0}})}
+const scVis=()=>SCI.filter(i=>!scHide.has(i.course));
+const scOn=day=>scVis().filter(i=>i.day===day).sort((a,b)=>(b.allDay-a.allDay)||(a.t-b.t));
+function scGo(n){scClose();const a=scAnchor||scDay(Date.now());
+ if(!n)scAnchor=scDay(Date.now());
+ else if(scView==='month'){const d=new Date(a);d.setDate(1);d.setMonth(d.getMonth()+n);scAnchor=d.getTime()}
+ else scAnchor=scAdd(a,7*n);
+ drawSchool()}
+function scSetView(v,day){scView=v;if(day)scAnchor=day;scSave();scClose();drawSchool()}
+function scToggle(n){const c=scCourses[n];scHide.has(c)?scHide.delete(c):scHide.add(c);scSave();drawSchool()}
+
 function drawSchool(){
- const all=scItems(),open=all.filter(i=>!i.done&&!i.past),soon=open.filter(i=>i.t-Date.now()<3*864e5);
+ SCI=scItems();scCourses=[...new Set(SCI.map(i=>i.course))].sort();
+ const now=Date.now(),soon=SCI.filter(i=>!i.done&&!i.past&&i.t-now<3*864e5);
  const pill=$('#navSchool');pill.hidden=!soon.length;pill.textContent=soon.length;
  if(view!=='school')return;
- const F={open:['Open',open],done:['Done',all.filter(i=>i.done)],past:['Past, not marked done',all.filter(i=>!i.done&&i.past)],all:['All',all]};
- $('#scFilters').innerHTML=Object.keys(F).map(k=>`<button class="chip ${scF===k?'sel':''}" onclick="scF='${k}';drawSchool()">${F[k][0]} <span class="n">${F[k][1].length}</span></button>`).join('');
- const gen=SC.generated?Date.parse(SC.generated):null,old=gen&&Date.now()-gen>3*864e5;
- $('#scStamp').innerHTML=gen?`${old?'<span class="chip warn">Out of date</span> ':''}Exported ${esc(scFmt(gen))}`:'';
- const today=scDay(Date.now());let html='',last=null;
- for(const i of F[scF][1]){const ds=scDay(i.t);
-  if(ds!==last){const n=Math.round((ds-today)/864e5);html+=`<li class="dayh">${n===0?'Today':n===1?'Tomorrow':n===-1?'Yesterday':esc(new Date(ds).toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'}))}</li>`;last=ds}
-  const chip=i.done?'<span class="chip ok"><span class="dt"></span>Done</span>':i.past?'<span class="chip off">Past</span>':i.t-Date.now()<864e5?'<span class="chip err">Due soon</span>':i.t-Date.now()<3*864e5?'<span class="chip warn">This week</span>':'';
-  html+=`<li><div class="li"><span class="av c-${scColor(i.course)}" style="width:36px;height:36px">${ic('school','i s')}</span><span class="tx"><div class="p" style="white-space:normal">${esc(i.title)}</div><div class="s2">${esc(i.course)}${i.kind&&i.kind!=='Calendar'?' · '+esc(i.kind):''}</div></span><span class="end">${chip}<span class="tm">${esc(new Date(i.t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}))}</span></span></div></li>`}
- $('#scList').innerHTML=html||`<div class="empty">${ic('school')}${all.length?'Nothing here.':'No schedule yet. In Brightspace, run <span class="mono">await thisweek()</span> from tools/thisweek.js, then use Import.'}</div>`;
- $('#scNews').innerHTML=(SC.news||[]).map(n=>`<li><div class="li"><span class="av c-${scColor(n.course)}" style="width:36px;height:36px">${ic('history','i s')}</span><span class="tx"><div class="p" style="white-space:normal">${esc(n.course)}: ${esc(n.title)}</div><div class="s2" style="white-space:normal">${esc(n.body)}</div></span><span class="end tm">${n.when?esc(scFmt(Date.parse(n.when))):''}</span></div></li>`).join('')||`<div class="empty">No recent announcements.</div>`;
+ if(!scAnchor)scAnchor=scDay(now);
+ $('#scViews').innerHTML=[['month','Month'],['week','Week'],['agenda','Schedule']].map(([v,n])=>`<button class="${scView===v?'on':''}" onclick="scSetView('${v}')">${n}</button>`).join('');
+ $('#scLegend').innerHTML=scCourses.map((c,n)=>`<button class="cal-cb ${scCol(c)} ${scHide.has(c)?'off':''}" onclick="scToggle(${n})"><span class="bx">${ic('check')}</span>${esc(c)}</button>`).join('');
+ $('#scLegend').hidden=!scCourses.length;
+ const gen=SC&&SC.generated?Date.parse(SC.generated):null;
+ $('#scStamp').innerHTML=gen?`${now-gen>3*864e5?'<span class="chip warn">Out of date</span> ':''}Exported ${esc(scDate(gen,{month:'short',day:'numeric'}))}, ${esc(scTime(gen))}`:'';
+ if(!SCI.length){$('#scTitle').textContent=scDate(scAnchor,{month:'long',year:'numeric'});
+  $('#scBody').innerHTML=`<div class="empty">${ic('calendar')}No schedule yet. In Brightspace, run <span class="mono">await thisweek()</span> from tools/thisweek.js, then import the file with the button above.</div>`}
+ else if(scView==='month')scMonth();else if(scView==='week')scWeek();else scAgenda();
+ $('#scNews').innerHTML=(SC.news||[]).map(n=>`<li><div class="li"><span class="av ${scCol(n.course)}" style="width:36px;height:36px;color:var(--ev)">${ic('bell','i s')}</span><span class="tx"><div class="p" style="white-space:normal">${esc(n.course)}: ${esc(n.title)}</div><div class="s2" style="white-space:normal">${esc(n.body)}</div></span><span class="end tm">${n.when?esc(scDate(Date.parse(n.when),{month:'short',day:'numeric'})):''}</span></div></li>`).join('')||`<div class="empty">No recent announcements.</div>`;
  $('#scNotesCard').hidden=!(SC.notes||[]).length;
  $('#scNotes').innerHTML=(SC.notes||[]).map(n=>`<li><div class="li"><span class="tx"><div class="s2" style="white-space:normal">${esc(n)}</div></span></div></li>`).join('')}
+
+const scChip=i=>`<button class="cal-ev ${scCol(i.course)} ${i.allDay?'ad':''} ${i.done?'done':''}" onclick="scOpen(event,${i.k})" title="${esc(i.course+': '+i.title)}">${i.allDay?'':'<span class="d"></span><span class="t">'+scTime(i.t)+'</span>'}<span class="n">${esc(i.title)}</span></button>`;
+function scMonth(){
+ const first=new Date(scAnchor);first.setDate(1);const m=first.getMonth(),today=scDay(Date.now());
+ $('#scTitle').textContent=scDate(first.getTime(),{month:'long',year:'numeric'});
+ const start=scAdd(first.getTime(),-first.getDay()),last=new Date(first.getFullYear(),m+1,0).getTime();
+ const weeks=Math.ceil((Math.round((last-start)/864e5)+1)/7);
+ let h='<div class="cal-dow">'+['SUN','MON','TUE','WED','THU','FRI','SAT'].map(d=>`<div>${d}</div>`).join('')+'</div><div class="cal-month">';
+ for(let k=0;k<weeks*7;k++){const day=scAdd(start,k),d=new Date(day),its=scOn(day),max=its.length>3?2:3;
+  h+=`<div class="cal-cell ${d.getMonth()!==m?'out':''} ${day===today?'today':''}"${its.length?` onclick="scDayPop(event,${day})"`:''}>`+
+   `<button class="cal-dn" onclick="event.stopPropagation();scSetView('week',${day})" title="Open week">${d.getDate()===1?esc(scDate(day,{month:'short'}))+' ':''}${d.getDate()}</button>`+
+   `<div class="cal-evs">${its.slice(0,max).map(scChip).join('')}${its.length>max?`<button class="cal-more" onclick="scDayPop(event,${day})">${its.length-max} more</button>`:''}</div></div>`}
+ $('#scBody').innerHTML=h+'</div>'}
+function scWeek(){
+ const start=scAdd(scAnchor,-new Date(scAnchor).getDay()),end=scAdd(start,6),today=scDay(Date.now());
+ const s=new Date(start),e=new Date(end);
+ $('#scTitle').textContent=s.getMonth()===e.getMonth()?`${scDate(start,{month:'long'})} ${s.getDate()} – ${e.getDate()}, ${e.getFullYear()}`
+  :`${scDate(start,{month:'short',day:'numeric'})} – ${scDate(end,{month:'short',day:'numeric'})}, ${e.getFullYear()}`;
+ let h='<div class="cal-wscroll"><div class="cal-week">';
+ for(let k=0;k<7;k++){const day=scAdd(start,k);
+  h+=`<div class="cal-wcol ${day===today?'today':''}"><div class="cal-wh"><div class="dw">${esc(scDate(day,{weekday:'short'}).toUpperCase())}</div><span class="dn">${new Date(day).getDate()}</span></div>`+
+   scOn(day).map(i=>`<button class="cal-blk ${scCol(i.course)} ${i.allDay?'':'tm'} ${i.done?'done':''}" onclick="scOpen(event,${i.k})"><b>${esc(i.title)}</b>${esc(i.course)} · ${i.allDay?'all day':scTime(i.t)}</button>`).join('')+'</div>'}
+ $('#scBody').innerHTML=h+'</div></div>'}
+function scAgenda(){
+ const from=scAdd(scAnchor,-new Date(scAnchor).getDay()),today=scDay(Date.now());
+ $('#scTitle').textContent=scDate(from,{month:'long',year:'numeric'});
+ const days=[...new Set(scVis().filter(i=>i.day>=from).map(i=>i.day))];
+ $('#scBody').innerHTML=days.map(day=>`<div class="cal-ag ${day===today?'today':''}"><div class="dd"><span class="dn">${new Date(day).getDate()}</span><span class="dw">${esc(scDate(day,{month:'short',weekday:'short'}).toUpperCase())}</span></div><div>`+
+  scOn(day).map(i=>`<button class="cal-row ${scCol(i.course)} ${i.done?'done':''}" onclick="scOpen(event,${i.k})"><span class="d"></span><span class="t">${i.allDay?'All day':scTime(i.t)}</span><span class="n">${esc(i.title)}</span><span class="c">${esc(i.course)}</span></button>`).join('')+'</div></div>').join('')
+  ||`<div class="empty">${ic('calendar')}Nothing from this week on. Use ‹ to look back, or import a newer schedule.</div>`}
+
+/* event details popover, like Google Calendar's */
+let scPopEl=null;
+function scClose(){if(scPopEl)scPopEl.hidden=true}
+function scPop(e,html){e.stopPropagation();
+ if(!scPopEl){scPopEl=document.createElement('div');scPopEl.className='cal-pop';scPopEl.hidden=true;document.body.appendChild(scPopEl);
+  scPopEl.addEventListener('click',ev=>ev.stopPropagation())}
+ scPopEl.innerHTML=`<div class="ph"><button class="cal-nav" onclick="scClose()" aria-label="Close">${ic('x')}</button></div>`+html;scPopEl.hidden=false;
+ const r=e.currentTarget.getBoundingClientRect(),w=scPopEl.offsetWidth,ht=scPopEl.offsetHeight;
+ let x=r.right+8;if(x+w>innerWidth-12)x=r.left-w-8;if(x<12)x=Math.max(12,Math.min(r.left,innerWidth-w-12));
+ let y=Math.min(r.top,innerHeight-ht-12);if(y<12)y=12;
+ scPopEl.style.left=x+'px';scPopEl.style.top=y+'px'}
+function scOpen(e,k){const i=SCI.find(x=>x.k===k);if(!i)return;
+ const left=i.t-Date.now(),dd=Math.round((i.day-scDay(Date.now()))/864e5);
+ const status=i.done?'<span class="chip ok"><span class="dt"></span>Done</span>':i.past?'<span class="chip off">Past · no score in Brightspace</span>':left<864e5?'<span class="chip err">Due within a day</span>':left<3*864e5?'<span class="chip warn">Due soon</span>':'<span class="chip pri">Upcoming</span>';
+ const rel=dd===0?'today':dd===1?'tomorrow':dd===-1?'yesterday':dd>0?`in ${dd} days`:`${-dd} days ago`;
+ scPop(e,`<div class="pr ${scCol(i.course)}"><span class="sq"></span><div><h3>${esc(i.title)}</h3><div class="m">${esc(scDate(i.t,{weekday:'long',month:'long',day:'numeric'}))} · ${scWhen(i)}</div></div></div>`+
+  `<div class="pr">${ic('clock')}<div class="m">${rel[0].toUpperCase()+rel.slice(1)}</div></div>`+
+  `<div class="pr">${ic('school')}<div class="m">${esc(i.course)}${i.kind&&i.kind!=='Calendar'?' · '+esc(i.kind):''}</div></div>`+
+  `<div class="pr">${ic('check')}<div class="m">${status}</div></div>`)}
+function scDayPop(e,day){const its=scOn(day);if(!its.length)return;
+ scPop(e,`<div class="dh">${esc(scDate(day,{weekday:'short'}).toUpperCase())}</div><div class="dbig">${new Date(day).getDate()}</div><div class="cal-evs" style="padding:0 12px">${its.map(scChip).join('')}</div>`)}
+document.addEventListener('click',scClose);
+addEventListener('resize',scClose);addEventListener('scroll',scClose,{passive:true});
+addEventListener('keydown',e=>{
+ if(e.key==='Escape')return scClose();
+ if(view!=='school'||e.ctrlKey||e.metaKey||e.altKey||/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName))return;
+ const k=e.key.toLowerCase();
+ if(k==='t')scGo(0);else if(k==='j'||k==='n')scGo(1);else if(k==='k'||k==='p')scGo(-1);
+ else if(k==='m')scSetView('month');else if(k==='w')scSetView('week');else if(k==='a')scSetView('agenda')});
 $('#scFile').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
  try{const r=await api('/api/school',JSON.parse(await f.text()));snack(`Imported ${r.count} items`);loadSchool()}
  catch(err){snack(err instanceof SyntaxError?'That file is not valid JSON.':err.message,'err')}});
