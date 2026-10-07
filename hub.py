@@ -48,11 +48,12 @@ def init():
         CREATE INDEX IF NOT EXISTS sessions_mac ON sessions(mac, end);
         CREATE INDEX IF NOT EXISTS events_mac ON events(mac);
         CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
+        CREATE TABLE IF NOT EXISTS leases(ip TEXT PRIMARY KEY, mac TEXT, ts REAL, hostname TEXT);
         """)
         have = {r[1] for r in c.execute("PRAGMA table_info(devices)")}
         for col, typ in [("vendor", "TEXT"), ("notes", "TEXT"), ("info", "TEXT"),
                          ("ports", "TEXT"), ("scan_ts", "REAL"), ("scan_err", "TEXT"), ("type_override", "TEXT"),
-                         ("owner", "TEXT"), ("location", "TEXT"), ("watch", "INTEGER DEFAULT 0")]:
+                         ("owner", "TEXT"), ("location", "TEXT"), ("watch", "INTEGER DEFAULT 0"), ("via", "TEXT")]:
             if col not in have:
                 c.execute(f"ALTER TABLE devices ADD COLUMN {col} {typ}")
 
@@ -107,23 +108,63 @@ def behind_extender(key):
     return "@" in key
 
 # ---------- LAN scanner ----------
-def sweep(known_shared=frozenset()):
+# ---------- Wi-Fi extender ----------
+# A MAC-rewriting extender (the Netgear EX6100) answers for every client behind it with its own MAC, so on the
+# network those clients all look alike. Their DHCP requests still carry their real MAC inside the packet, and the
+# hub overhears those, so it learns which IP belongs to which real device and keys them by their real MAC.
+LEASES = {}        # ip -> real MAC, from overheard DHCP requests
+EXTENDERS = set()  # MACs seen answering for several IPs at once
+EXT_VIA = {}       # device key -> extender MAC it was reached through in the latest sweep
+
+def load_extender_state():
+    with db() as c:
+        LEASES.update({r["ip"]: r["mac"] for r in c.execute("SELECT ip, mac FROM leases")})
+        r = c.execute("SELECT v FROM kv WHERE k='extenders'").fetchone()
+        if r:
+            EXTENDERS.update(json.loads(r["v"]))
+        # older versions keyed extender clients as "<extender mac>@<ip>"
+        EXTENDERS.update(k.split("@")[0] for (k,) in c.execute("SELECT mac FROM devices WHERE mac LIKE '%@%'").fetchall()
+                         if not private_mac(k))
+        remember_extenders(c, ())
+
+def remember_extenders(c, macs):
+    EXTENDERS.update(macs)
+    c.execute("INSERT OR REPLACE INTO kv VALUES('extenders', ?)", (json.dumps(sorted(EXTENDERS)),))
+
+def learn_lease(c, ip, mac, host=None):
+    if not ip or not ip.startswith(SUBNET.rsplit(".", 1)[0] + ".") or mac in EXTENDERS or mac in SELF:
+        return
+    for old in [k for k, v in LEASES.items() if v == mac and k != ip]:
+        del LEASES[old]
+    LEASES[ip] = mac
+    c.execute("DELETE FROM leases WHERE mac=? AND ip<>?", (mac, ip))
+    c.execute("INSERT OR REPLACE INTO leases(ip, mac, ts, hostname) VALUES(?,?,?,?)", (ip, mac, time.time(), host))
+
+def sweep():
+    """One LAN sweep. Returns ({device key: ip}, {device key: extender MAC it was seen through}, extender MACs seen now)."""
     out = subprocess.run(["nmap", "-sn", "-n", "-T4", SUBNET], capture_output=True, text=True, timeout=120).stdout
-    hosts = re.findall(r"Nmap scan report for (\d+\.\d+\.\d+\.\d+)", out)
+    hosts = set(re.findall(r"Nmap scan report for (\d+\.\d+\.\d+\.\d+)", out))
     neigh = subprocess.run(["ip", "neigh"], capture_output=True, text=True).stdout
     macs = {}
     for line in neigh.splitlines():
         m = re.match(r"(\d+\.\d+\.\d+\.\d+) dev \S+ lladdr (\S+) (\S+)", line)
         if m and m.group(3) != "FAILED":
             macs[m.group(1)] = m.group(2).lower()
-    found = {}
     prefix = SUBNET.rsplit(".", 1)[0]
-    ips = [ip for ip in set(hosts) | set(macs) if ip in macs and ip.startswith(prefix)]
-    shared = {m for m in macs.values() if sum(1 for ip in ips if macs[ip] == m) > 1} | known_shared
-    for ip in ips:
-        # Wi-Fi extenders (e.g. Netgear EX6100) answer for every client behind them with their own MAC.
-        # Those clients can't be told apart by MAC, so key them by MAC + IP instead.
-        found[f"{macs[ip]}@{ip}" if macs[ip] in shared else macs[ip]] = ip
+    ips = [ip for ip in hosts | set(macs) if ip in macs and ip.startswith(prefix)]
+    # An extender has a fixed, vendor-assigned MAC. A phone's private (randomised) MAC at two IPs is just a stale
+    # neighbour entry for its old address, so it never counts.
+    multi = {m for m in {macs[ip] for ip in ips}
+             if not private_mac(m) and sum(1 for ip in ips if macs[ip] == m and ip in hosts) > 1}
+    found, via = {}, {}
+    for ip in sorted(ips, key=lambda x: x not in hosts):   # addresses that answered this sweep beat stale ones
+        m = macs[ip]
+        if m in multi or m in EXTENDERS:
+            key = LEASES.get(ip) or f"{m}@{ip}"
+            if key not in found:
+                found[key], via[key] = ip, m
+        elif m not in found:
+            found[m] = ip
     # the Pi itself never shows up in its own neighbour table
     me = subprocess.run(["ip", "-o", "link", "show", "wlan0"], capture_output=True, text=True).stdout
     m = re.search(r"link/ether (\S+)", me)
@@ -131,7 +172,44 @@ def sweep(known_shared=frozenset()):
     if m and myip:
         found[m.group(1).lower()] = myip
         SELF.add(m.group(1).lower())
-    return found
+    return found, via, multi
+
+def merge_device(c, old, new):
+    """Fold the device record `old` into `new` (or just rename it if `new` doesn't exist yet), keeping anything the user set."""
+    o = c.execute("SELECT * FROM devices WHERE mac=?", (old,)).fetchone()
+    if not o or old == new:
+        return
+    n = c.execute("SELECT * FROM devices WHERE mac=?", (new,)).fetchone()
+    c.execute("UPDATE sessions SET mac=? WHERE mac=?", (new, old))
+    if n is None:
+        c.execute("UPDATE devices SET mac=?, vendor=COALESCE(?, vendor) WHERE mac=?", (new, vendor(new), old))
+        c.execute("UPDATE events SET mac=? WHERE mac=?", (new, old))
+    else:   # the "new device" / "changed IP" events of a duplicate were false alarms
+        c.execute("UPDATE events SET mac=? WHERE mac=? AND kind NOT IN ('new','ip')", (new, old))
+        c.execute("DELETE FROM events WHERE mac=?", (old,))
+        newer = (o["last_seen"] or 0) > (n["last_seen"] or 0)
+        info = {**json.loads(o["info"] or "{}"), **json.loads(n["info"] or "{}")}
+        c.execute("""UPDATE devices SET name=COALESCE(name,?), notes=COALESCE(notes,?), type_override=COALESCE(type_override,?),
+                     owner=COALESCE(owner,?), location=COALESCE(location,?), hostname=COALESCE(hostname,?),
+                     is_person=MAX(is_person,?), known=MAX(known,?), watch=MAX(watch,?), first_seen=MIN(first_seen,?),
+                     last_seen=MAX(last_seen,?), ip=?, info=?, ports=COALESCE(ports,?), scan_ts=COALESCE(scan_ts,?) WHERE mac=?""",
+                  (o["name"], o["notes"], o["type_override"], o["owner"], o["location"], o["hostname"], o["is_person"], o["known"],
+                   o["watch"], o["first_seen"], o["last_seen"], o["ip"] if newer else n["ip"], json.dumps(info), o["ports"], o["scan_ts"], new))
+        c.execute("DELETE FROM devices WHERE mac=?", (old,))
+    print(f"merged {old} into {new}", flush=True)
+
+def migrate_extender_records():
+    """Re-key old '<extender mac>@<ip>' records whose real MAC the DHCP listener has already learned."""
+    with lock, db() as c:
+        for r in c.execute("SELECT mac, ip, info FROM devices WHERE mac LIKE '%@%'").fetchall():
+            base, ip = r["mac"].split("@", 1)
+            if private_mac(base):          # a phone's private MAC, wrongly treated as an extender before
+                merge_device(c, r["mac"], base)
+                continue
+            dh = json.loads(r["info"] or "{}").get("dhcp") or {}
+            if dh.get("mac") and dh["mac"] != base and (dh.get("requested_ip") or dh.get("ip")) == ip:
+                learn_lease(c, ip, dh["mac"], dh.get("hostname"))
+                merge_device(c, r["mac"], dh["mac"])
 
 def local_ip():
     try:
@@ -150,22 +228,26 @@ def rdns(ip):
 def scan_loop():
     while True:
         try:
-            with db() as c:  # once a MAC has been seen fronting several IPs, keep keying it by IP for good
-                known_shared = {r[0].split("@")[0] for r in c.execute("SELECT mac FROM devices WHERE mac LIKE '%@%'")}
-            found = sweep(known_shared)
+            found, via, multi = sweep()
             now = time.time()
             with lock, db() as c:
+                if multi - EXTENDERS:
+                    remember_extenders(c, multi)
                 seed = c.execute("SELECT COUNT(*) FROM devices").fetchone()[0] == 0
-                resolve_extender_aliases(c, found)
+                for key, ip in found.items():   # adopt an older "<extender>@<ip>" record once the real MAC is known
+                    if "@" not in key and key in via:
+                        merge_device(c, f"{via[key]}@{ip}", key)
+                resolve_extender_aliases(c, found, via)
+                EXT_VIA.clear(); EXT_VIA.update(via)
                 for mac, ip in found.items():
                     row = c.execute("SELECT * FROM devices WHERE mac=?", (mac,)).fetchone()
                     if row is None:
                         host = rdns(ip)
                         # first ever scan: treat everything present as known (baseline)
                         early = DHCP_SEEN.get(mac)
-                        c.execute("INSERT INTO devices(mac,ip,hostname,vendor,known,first_seen,last_seen,info) VALUES(?,?,?,?,?,?,?,?)",
+                        c.execute("INSERT INTO devices(mac,ip,hostname,vendor,known,first_seen,last_seen,info,via) VALUES(?,?,?,?,?,?,?,?,?)",
                                   (mac, ip, host, vendor(mac), 1 if seed or mac in SELF else 0, now, now,
-                                   json.dumps({"dhcp": {k: v for k, v in early.items() if k != "msg"}}) if early else None))
+                                   json.dumps({"dhcp": {k: v for k, v in early.items() if k != "msg"}}) if early else None, via.get(mac)))
                         if not seed and mac not in SELF:
                             event(c, "new", mac, f"New device joined: {host or vendor(mac) or ip} ({ip})")
                     else:
@@ -174,8 +256,8 @@ def scan_loop():
                         if row["ip"] and row["ip"] != ip and ip != VIA_EXTENDER.get(mac) and row["ip"] not in (VIA_EXTENDER.get(mac), ) \
                                 and not c.execute("SELECT 1 FROM events WHERE mac=? AND kind='ip' AND ts>?", (mac, now - 3600)).fetchone():
                             event(c, "ip", mac, f"{row['name'] or host or mac} changed IP {row['ip']} → {ip}")
-                        c.execute("UPDATE devices SET ip=?,hostname=?,vendor=COALESCE(vendor,?),last_seen=? WHERE mac=?",
-                                  (ip, host, vendor(mac), now, mac))
+                        c.execute("UPDATE devices SET ip=?,hostname=?,vendor=COALESCE(vendor,?),last_seen=?,via=? WHERE mac=?",
+                                  (ip, host, vendor(mac), now, via.get(mac), mac))
                         if row["watch"] and not row["is_person"]:
                             last = c.execute("SELECT kind, ts FROM events WHERE mac=? AND kind IN ('online','offline') ORDER BY id DESC LIMIT 1",
                                              (mac,)).fetchone()
@@ -360,10 +442,10 @@ DHCP_SEEN = {}  # mac -> latest request, for devices not in the table yet
 VIA_EXTENDER = {}  # real mac -> IP it currently has while connected through the MAC-rewriting extender
 
 GENERIC_HOSTS = re.compile(r"^(iphone|ipad|android|localhost|none|unknown|esp_?[0-9a-f]*|galaxy|amazon|echo|wlan0|espressif|[0-9a-f-]{12,})$", re.I)
-def resolve_extender_aliases(c, found):
-    """A device behind the Netgear extender shows up under the extender's MAC. If its network name matches
-    exactly one device we already know directly, it *is* that device (e.g. a phone that roamed to the
-    extender): count the sighting for the real device and fold any duplicate record into it."""
+def resolve_extender_aliases(c, found, via):
+    """A device behind the extender whose DHCP we haven't overheard yet is keyed '<extender mac>@<ip>'. If its network
+    name matches exactly one device we already know, it *is* that device (e.g. a phone that roamed to the extender):
+    count the sighting for the real device and fold any duplicate record into it."""
     direct = {}
     for r in c.execute("SELECT mac, hostname FROM devices WHERE mac NOT LIKE '%@%' AND hostname IS NOT NULL"):
         h = r["hostname"].lower().replace(".local", "")
@@ -380,22 +462,16 @@ def resolve_extender_aliases(c, found):
         real = real[0]
         del found[key]
         found[real] = ip
+        via[real] = via.pop(key, None)
         VIA_EXTENDER[real] = ip
-        dup = c.execute("SELECT * FROM devices WHERE mac=?", (key,)).fetchone()
-        if dup:  # merge the duplicate into the real device, keeping anything the user set
-            c.execute("UPDATE sessions SET mac=? WHERE mac=?", (real, key))
-            c.execute("UPDATE events SET mac=? WHERE mac=? AND kind NOT IN ('new','ip')", (real, key))
-            c.execute("DELETE FROM events WHERE mac=?", (key,))
-            c.execute("""UPDATE devices SET name=COALESCE(name,?), notes=COALESCE(notes,?), type_override=COALESCE(type_override,?),
-                         is_person=MAX(is_person,?), first_seen=MIN(first_seen,?) WHERE mac=?""",
-                      (dup["name"], dup["notes"], dup["type_override"], dup["is_person"], dup["first_seen"], real))
-            c.execute("DELETE FROM devices WHERE mac=?", (key,))
-            print(f"merged extender duplicate {key} into {real}", flush=True)
+        merge_device(c, key, real)
+
 def on_dhcp(req):
     """Attach an overheard DHCP request to the device it came from (by MAC, or by IP for devices behind the extender)."""
     DHCP_SEEN[req["mac"]] = req
     ip = req.get("ip") or req.get("requested_ip")
     with lock, db() as c:
+        learn_lease(c, ip, req["mac"], req.get("hostname"))
         r = c.execute("SELECT mac, info FROM devices WHERE mac=?", (req["mac"],)).fetchone()
         if not r and ip:
             r = c.execute("SELECT mac, info FROM devices WHERE ip=? AND mac LIKE '%@%'", (ip,)).fetchone()
@@ -988,6 +1064,8 @@ if __name__ == "__main__":
     with db() as c:  # backfill vendors for devices seen before vendor lookup existed
         for r in c.execute("SELECT mac FROM devices WHERE vendor IS NULL").fetchall():
             c.execute("UPDATE devices SET vendor=? WHERE mac=?", (vendor(r["mac"]), r["mac"]))
+    load_extender_state()
+    migrate_extender_records()
     threading.Thread(target=scan_loop, daemon=True).start()
     threading.Thread(target=ping_loop, daemon=True).start()
     threading.Thread(target=discover_loop, daemon=True).start()

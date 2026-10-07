@@ -895,7 +895,7 @@ function drawDev(){
  const head=`<div class="dh">
   <div class="crumbs"><a href="#overview">${ic('home')}</a>${ic('chev')}<a href="#devices">Devices</a>${ic('chev')}<b>${esc(label(d))}</b></div>
   <div class="top2">${avatar(d,'lg')}<div class="tx"><h1>${esc(label(d))}</h1>
-   <div class="meta">${statusChip(d)}${d.known?'':'<span class="chip warn">New</span>'}${d.is_person?'<span class="chip pri">Who\'s home</span>':''}${d.watch&&!d.is_person?'<span class="chip pri">Watched</span>':''}<span>${esc(k.name)}${d.vendor?' by '+esc(shortVendor(d.vendor)):''} · <span class="mono">${esc(d.ip)}</span></span></div></div></div>
+   <div class="meta">${statusChip(d)}${d.known?'':'<span class="chip warn">New</span>'}${d.is_person?'<span class="chip pri">Who\'s home</span>':''}${d.watch&&!d.is_person?'<span class="chip pri">Watched</span>':''}${d.via?'<span class="chip out">Via Wi-Fi extender</span>':''}<span>${esc(k.name)}${d.vendor?' by '+esc(shortVendor(d.vendor)):''} · <span class="mono">${esc(d.ip)}</span></span></div></div></div>
   <div class="acts">
    ${d.known?'':`<button class="btn ct" onclick="approve()">${ic('check')}Approve</button>`}
    <button class="btn ${d.known?'ct':'ol'}" onclick="edit()">${ic('edit')}Edit</button>
@@ -929,7 +929,7 @@ function drawDev(){
    row('Operating system',esc(idn.os||'')),
    row('Real MAC',idn.real_mac?`<span class="mono">${esc(idn.real_mac)}</span> <span class="cap">(from its Wi-Fi join request)</span>`:''),
    row('IP address',`<span class="mono">${esc(d.ip)}</span>`,'Its address on your home network. It can change over time.'),
-   row('MAC address',d.shared_mac?`<span class="mono">${esc(d.mac.split('@')[0])}</span> <span class="chip out" title="The Netgear extender shows its own address for every device connected through it, so the real one is hidden">Via Wi-Fi extender</span>`:`<span class="mono">${esc(d.mac)}</span>${d.private_mac?' <span class="chip out" title="Phones often use a random address for privacy">Private</span>':''}`,'Its permanent hardware ID'),
+   row('MAC address',d.shared_mac?`<span class="mono">${esc(d.mac.split('@')[0])}</span> <span class="chip out" title="The Netgear extender shows its own address for every device connected through it, so the real one is hidden">Via Wi-Fi extender</span>`:`<span class="mono">${esc(d.mac)}</span>${d.private_mac?' <span class="chip out" title="Phones often use a random address for privacy">Private</span>':''}${d.via?' <span class="chip out" title="Connected through the Netgear extender. The hub learned its real address from its Wi-Fi join request.">Via Wi-Fi extender</span>':''}`,'Its permanent hardware ID'),
    row('Calls itself',esc(d.dname)),
    row('Network name',esc(d.hostname||md.hostname)),
    row('Windows name',esc(info.nbname?info.nbname+(info.workgroup?' ('+info.workgroup+')':''):'')),
